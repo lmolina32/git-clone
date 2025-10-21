@@ -238,6 +238,74 @@ def repo_default_config() -> configparser.ConfigParser:
 
     return ret
 
+argsp = argsubparsers.add_parser("init", help="Initialize a new, empty repository.")
+
+argsp.add_argument("path",
+                   metavar="directory",
+                   nargs="?",
+                   default=".",
+                   help="Where to create the repository.")
+
+def cmd_init(args: argparse.Namespace) -> None:
+    '''
+    Initialize a new WYAG repository.
+
+    This function is the command-line entry point for `wyag init`.
+    It reads the target directory from the parsed command-line arguments
+    and calls `repo_create()` to create a new, empty repository there.
+
+    Params:
+        args : argparse.Namespace
+            Parsed command-line arguments, expected to contain a `path`
+            attribute specifying where to create the repository.
+
+    Example:
+    >>> cmd_init(argparse.Namespace(path="."))
+    # Creates a new WYAG repository in the current directory.
+    '''
+    repo_create(args.path)
+
+def repo_find(path: str = ".", required: bool = True) -> Optional[GitRepository]:
+    '''
+    Recursively search for a Git repository starting from the given path.
+
+    This function walks upward through parent directories until it finds
+    a folder containing a `.git` subdirectory, which marks the root of
+    a Git repository.
+
+    Params:
+        path: str, optional
+            The starting directory to search from.
+            Defaults to the current directory (".").
+        required: bool, optional
+            If True, raises an Exception when
+            no `.git` directory is found. If False, returns None instead.
+
+    Returns:
+        Optional[GitRepository]
+            A GitRepository object representing the found repository, or
+            None if no repository was found and `required` is False.
+    '''
+
+    path = os.path.realpath(path)
+
+    if os.path.isdir(os.path.join(path, ".git")):
+        return GitRepository(path)
+
+    # if we haven't returned, recurse in parent, if w
+    parent = os.path.realpath(os.path.join(path, ".."))
+
+    # bottom case, the path is root -> os.path.join("/", "..") == "/"
+    if parent == path:
+        if required:
+            raise Exception("Not git directory")
+        else:
+            return None
+
+    # recursive case
+    return repo_find(parent, required)
+
+
 if __name__ == "__main__":
     print("here")
 
