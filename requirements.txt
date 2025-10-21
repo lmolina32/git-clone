@@ -1,0 +1,6 @@
+# wyag
+# No external dependencies required
+
+# Requires Python 3.10+
+
+python_version >= "3.10"
