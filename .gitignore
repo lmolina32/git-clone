@@ -2,3 +2,5 @@
 test
 __pycache__
 notes.md
+*.o
+git_clone
