@@ -1,10 +1,11 @@
 /* git_clone.c: git driver */
 
+#include "git_functions.h"
 #include "utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include 
+#include <stdbool.h>
 
 
 int main(int argc, char *argv[]){
@@ -20,7 +21,7 @@ int main(int argc, char *argv[]){
     const char *command = argv[argind++];
 
     if (streq(command, "init")){
-        status = cmd_init(argind - argc, argv[argind]);
+        status = cmd_init(argind - argc, &argv[argind]);
     }
 
 
