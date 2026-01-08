@@ -1,5 +1,4 @@
 .venv
-test
 __pycache__
 notes.md
 *.o
