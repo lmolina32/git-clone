@@ -164,7 +164,7 @@ def repo_dir(repo: GitRepository, *path: tuple[str, ...], mkdir: bool=False) -> 
         if (os.path.isdir(path)):
             return path
         else:
-            raise Excpetion(f"Not a directory {path}")
+            raise Exception(f"Not a directory {path}")
 
     if mkdir:
         os.makedirs(path)
@@ -935,9 +935,4 @@ def tree_parse(raw: bytes) -> List["GitTreeLeaf"]:
         pos, data = tree_parse_one(raw, pos)
         ret.append(data)
     return ret
-
-if __name__ == "__main__":
-    print("here")
-
-
 
