@@ -26,6 +26,8 @@ bool cmd_init(int arg_count, char *args[]){
         return false; 
     }
 
-    
+    if (args){}
+
+
     return true;
 }

@@ -1,11 +1,13 @@
 /* repository.c: handles repo functions */
 
 #include "repository.h"
+#include "ini.h"
 #include "utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <string.h>
 
 /* Forward Declaration of static Functions */
@@ -80,7 +82,8 @@ Repository *repo_create(const char *path, bool force){
  * @note The caller is responsible for destroying the returned Repository using repo_destroy().
  */
 Repository *repo_init(const char *path){
-
+    if (!path) { return NULL; }
+    return NULL;
 }
 
 /**
@@ -95,7 +98,9 @@ Repository *repo_init(const char *path){
  * @note The caller is responsible for destroying the returned Repository.
  */
 Repository *repo_find(const char *path, bool required){
-
+    if (!path) { return NULL; }
+    if (required) {}
+    return NULL;
 }
 
 
@@ -146,12 +151,31 @@ void repo_destroy(Repository *repo){
  * repo_path - Computes a path relative to the repository's gitdir (.git folder).
  *
  * @param repo The repository context.
- * @param path The subpath to append to the gitdir.
+ * @param ...   Additional strings to join. The list MUST end with NULL.
+ * @note The caller MUST provide NULL as the last argument to signal the end.
  * @return A heap-allocated string containing the full path. 
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_path(Repository *repo, const char *path){
+char *repo_path(Repository *repo, ...){
+    if (!repo) { return NULL; }
 
+    va_list args;
+    va_start(args, repo);
+    const char *s = va_arg(args, const char *);
+    char *path = path_join(repo->gitdir, s, NULL);
+    if (!s) { return path; }
+
+    char *full_path = NULL;
+
+    while ((s = va_arg(args, const char *))){
+        full_path = path_join(path, s, NULL);
+        free(path);
+        path = full_path;
+    }
+
+    va_end(args);
+    if (!full_path){ full_path = path; }
+    return full_path;
 }
 
 /**
@@ -168,7 +192,8 @@ char *repo_path(Repository *repo, const char *path){
  * @note The caller MUST free() the returned string when finished.
  */
 char *repo_file(Repository *repo, const char *path, bool mkdir){
-
+    if (repo || path || mkdir) { return NULL; }
+    return NULL;
 }
 
 /**
@@ -182,7 +207,8 @@ char *repo_file(Repository *repo, const char *path, bool mkdir){
  * @note The caller MUST free() the returned string when finished.
  */
 char *repo_dir(Repository *repo, const char *path, bool mkdir){
-
+    if (repo || path || mkdir) { return NULL; }
+    return NULL;
 }
 
 /**
@@ -194,7 +220,7 @@ char *repo_dir(Repository *repo, const char *path, bool mkdir){
  * @note The caller MUST free() the returned string.
  */
 char *repo_default_config(){
-
+    return NULL;
 }
 
 /* Static Functions */
