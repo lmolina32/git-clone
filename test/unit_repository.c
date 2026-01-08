@@ -108,12 +108,54 @@ int test_01_repo_create() {
     return EXIT_SUCCESS;
 }
 
+int test_02_repo_path(){
+    printf("Running file_exists extended tests...\n");
+
+    const char *test_path = "test_repo_zone";
+
+    Repository *repo = repo_create(test_path, true);
+    assert(repo != NULL);
+
+    // Test 1: Join one string 
+    char *s1 = repo_path(repo, "tags", NULL);
+    assert(s1 != NULL);
+    assert(streq(s1, "test_repo_zone/.git/tags"));
+    printf("Test 1 passed: Simple join\n");
+    free(s1);
+
+    // Test 2: Repo only path 
+    char *s2 = repo_path(repo, NULL);
+    assert(s2 != NULL);
+    assert(streq(s2, "test_repo_zone/.git"));
+    printf("Test 2 passed: Repo path only\n");
+    free(s2);
+
+    // Test 3: Passing multiple strings  
+    char *s3 = repo_path(repo, "refs", "heads", "main", NULL);
+    assert(s3 != NULL);
+    assert(streq(s3, "test_repo_zone/.git/refs/heads/main"));
+    printf("Test 3 passed: Multiple string path\n");
+    free(s3);
+
+    // Test 4: NULL safety  
+    char *s4 = repo_path(NULL);
+    assert(s4 == NULL);
+    printf("Test 4 passed: NULL safety \n");
+
+    repo_destroy(repo);
+    
+    printf("\nAll path_join tests passed successfully!\n");
+
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
         fprintf(stderr, "Where NUMBER is right of the following:\n");
         fprintf(stderr, "    0. Test repo_config_create\n");
-        fprintf(stderr, "    0. Test repo_create\n");
+        fprintf(stderr, "    1. Test repo_create\n");
+        fprintf(stderr, "    2. Test repo_path\n");
         return EXIT_FAILURE;
     }
 
@@ -123,6 +165,7 @@ int main(int argc, char *argv[]) {
     switch (number) {
         case 0:  status = test_00_repo_config_create(); break;
         case 1:  status = test_01_repo_create(); break;
+        case 2:  status = test_02_repo_path(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
