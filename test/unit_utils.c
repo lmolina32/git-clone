@@ -6,46 +6,137 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 
-int test_00_str_join() {
+int test_00_path_join() {
     printf("Running str_join tests...\n");
 
     // Test 1: Joining two strings
-    char *s1 = str_join("Hello", "World", NULL);
+    char *s1 = path_join("Hello", "World", NULL);
     assert(s1 != NULL);
     assert(streq(s1, "Hello/World"));
     printf("Test 1 Passed: Simple join\n");
     free(s1);
 
     // Test 2: Joining multiple strings (Path-like)
-    char *s2 = str_join("/usr", "local", "bin", "git", NULL);
+    char *s2 = path_join("/usr", "local", "bin", "git", NULL);
     assert(s2 != NULL);
     assert(streq(s2, "/usr/local/bin/git"));
     printf("Test 2 Passed: Multi-string join\n");
     free(s2);
 
     // Test 3: Joining with empty strings
-    char *s3 = str_join("git", "", "init", NULL);
+    char *s3 = path_join("git", "", "init", NULL);
     assert(s3 != NULL);
     assert(streq(s3, "git/init"));
     printf("Test 3 Passed: Empty string handling\n");
     free(s3);
 
     // Test 4: Single argument (just the first string)
-    char *s4 = str_join("Standalone", NULL);
+    char *s4 = path_join("Standalone", NULL);
     assert(s4 != NULL);
     assert(streq(s4, "Standalone"));
     printf("Test 4 Passed: Single string join\n");
     free(s4);
 
     // Test 5: Check for NULL return on NULL input
-    char *s5 = str_join(NULL);
+    char *s5 = path_join(NULL);
     assert(s5 == NULL);
     printf("Test 5 Passed: NULL safety\n");
 
-    printf("\nAll str_join tests passed successfully!\n");
+    printf("\nAll path_join tests passed successfully!\n");
 
+    return EXIT_SUCCESS;
+}
+
+int test_01_is_directory(){
+    printf("Running is_directory tests...\n");
+
+    const char *test_dir = "test_dir";
+    const char *test_nested = "test_dir/test_subdir";
+    const char *test_file = "test_file.txt";
+
+    mkdir(test_dir, 0755);
+    mkdir(test_nested, 0755);
+    FILE *f = fopen(test_file, "w");
+    fclose(f);
+
+    // Test 1: valid directory 
+    assert(is_directory(test_dir) == true);
+    printf("Test 1 Passed: Valid directory\n");
+
+    // Test 2: Valid File
+    assert(is_directory(test_file) == false);
+    printf("Test 2 Passed: Valid File\n");
+
+    // Test 3: Nested directory
+    assert(is_directory(test_nested) == true);
+    printf("Test 3 Passed: Valid nested direcotry\n");
+
+    // Test 4: Non-existent path
+    assert(is_directory("src/tmp/tmp") == false);
+    printf("Test 4 Passed: Not Valid directory\n");
+
+    // Test 5: Handling NULL
+    assert(is_directory(NULL) == false);
+    printf("Test 5 Passed: Handling NULL\n");
+
+    rmdir(test_nested);
+    rmdir(test_dir);
+    remove(test_file);
+
+    printf("\nAll path_join tests passed successfully!\n");
+
+    return EXIT_SUCCESS;
+}
+
+int test_02_file_exists() {
+    printf("Running file_exists extended tests...\n");
+
+    const char *dir = "test_data";
+    const char *nested_dir = "test_data/subdir";
+    const char *hidden_file = "test_data/.git_hidden";
+    const char *nested_file = "test_data/subdir/config.ini";
+
+    mkdir(dir, 0755);
+    mkdir(nested_dir, 0755);
+    
+    FILE *f1 = fopen(hidden_file, "w");
+    if (f1) fclose(f1);
+    
+    FILE *f2 = fopen(nested_file, "w");
+    if (f2) fclose(f2);
+
+    // --- Execution & Assertions ---
+
+    // Test 1: Hidden file existence (dotfile)
+    assert(file_exists(hidden_file) == true);
+    printf("Test 1 Passed: Found hidden file (.git_hidden)\n");
+
+    // Test 2: Nested file existence
+    assert(file_exists(nested_file) == true);
+    printf("Test 2 Passed: Found nested file in subdir\n");
+
+    // Test 3: Directory existence (it's a file type too)
+    assert(file_exists(nested_dir) == true);
+    printf("Test 3 Passed: Found directory as an existing path\n");
+
+    // Test 4: False positive check (non-existent)
+    assert(file_exists("test_data/ghost.txt") == false);
+    printf("Test 4 Passed: Correctly identified missing file\n");
+
+    // Test 5: NULL path handling
+    assert(file_exists(NULL) == false);
+    printf("Test 5 Passed: Handled NULL input gracefully\n");
+
+    remove(nested_file);
+    remove(hidden_file);
+    rmdir(nested_dir);
+    rmdir(dir);
+
+    printf("All file_exists tests passed successfully!\n\n");
     return EXIT_SUCCESS;
 }
 
@@ -54,6 +145,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
         fprintf(stderr, "Where NUMBER is right of the following:\n");
         fprintf(stderr, "    0. Test str_join\n");
+        fprintf(stderr, "    1. Test is_directory\n");
+        fprintf(stderr, "    2. Test file_exists\n");
         return EXIT_FAILURE;
     }
 
@@ -61,7 +154,9 @@ int main(int argc, char *argv[]) {
     int status = EXIT_FAILURE;
 
     switch (number) {
-        case 0:  status = test_00_str_join(); break;
+        case 0:  status = test_00_path_join(); break;
+        case 1:  status = test_01_is_directory(); break;
+        case 2:  status = test_02_file_exists(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 

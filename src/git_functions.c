@@ -21,6 +21,11 @@
  *         false otherwise.
  */
 bool cmd_init(int arg_count, char *args[]){
-    if (arg_count > 1) { return false; }
+    if (arg_count > 1){ 
+        fprintf(stderr, "usage: git init [<directory>]\n"); 
+        return false; 
+    }
+
+    
     return true;
 }

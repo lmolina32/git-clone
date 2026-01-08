@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <string.h>
 
+/* Forward Declaration of static Functions */
+
+static int handler(void* user, const char* section, const char* name, const char* value);
+
+/* Functions */
+
 /**
  * repo_create - Allocates and initializes a Repository object (Constructor).
  *  
@@ -23,7 +29,43 @@
  * @note        The caller is responsible for memory cleanup via repo_destroy().
  */
 Repository *repo_create(const char *path, bool force){
+    if (!path) { return NULL; }
 
+    Repository *repo = safe_calloc(sizeof(Repository), 1);
+    strncpy(repo->worktree, path, strlen(path) + 1);
+    char *gitdir = path_join(path, ".git", NULL);
+    if (gitdir){
+        strncpy(repo->gitdir, gitdir, strlen(gitdir) + 1);
+        free(gitdir);
+    }
+
+    if (!(force || is_directory(repo->gitdir))){
+        fprintf(stderr, "repo_create: Not a Git Repository %s\n", repo->gitdir);
+        goto fail;
+    }
+
+    // TODO: add repo_file(repo, "config")
+
+    char *config_file_path = path_join(repo->gitdir, "config", NULL);
+
+    if (config_file_path && file_exists(config_file_path)){
+        repo->config = repo_config_create(config_file_path);
+        if (!repo->config){ goto fail; }
+    } else if (!force){
+       fprintf(stderr, "repo_create: Configuration File is missing\n"); 
+       goto fail;
+    }
+
+    if (!force && repo->config->repo_format_version != 0){
+        fprintf(stderr, "repo_create: Unsupported repositoryformatversion: %d\n", repo->config->repo_format_version);
+        goto fail;
+    }
+
+    return repo;
+
+    fail:
+    repo_destroy(repo);
+    return NULL;
 }
 
 /**
@@ -52,7 +94,35 @@ Repository *repo_init(const char *path){
  * @return A pointer to the found Repository object, or NULL if not found and not required.
  * @note The caller is responsible for destroying the returned Repository.
  */
-Repository *repo_find(const char *path, bool required);
+Repository *repo_find(const char *path, bool required){
+
+}
+
+
+
+/**
+ * repo_config_create - Loads repository configuration from an INI file.
+ *
+ * This function parses a git-style INI configuration file at the specified path,
+ * allocating and populating a Configuration struct with values for repository
+ * format version, filemode, and bare status.
+ *
+ * @param path The filesystem path to the INI configuration file (e.g., .git/config).
+ * @return A pointer to the newly allocated Configuration object, or NULL if the
+ * file could not be opened, parsed, or if memory allocation failed.
+ * @note The caller is responsible for freeing the returned Configuration pointer 
+ * using free() when it is no longer needed.
+ */
+Configuration *repo_config_create(const char *path){
+    Configuration *config = safe_calloc(sizeof(Configuration), 1);
+
+    if (ini_parse(path, handler, config) < 0){
+        fprintf(stderr, "repo_config_create: cannot load %s\n", path);
+        return NULL;
+    }
+
+    return config;
+}
 
 /**
  * repo_destory - Frees all memory associated with a Repository object.
@@ -62,7 +132,15 @@ Repository *repo_find(const char *path, bool required);
  *
  * @param repo The Repository object to deallocate.
  */
-void repo_destroy(Repository *repo);
+void repo_destroy(Repository *repo){
+    if (!repo) { return; }
+    if (repo->config){
+        free(repo->config);
+        repo->config = NULL;
+    }
+
+    free(repo);
+}
 
 /**
  * repo_path - Computes a path relative to the repository's gitdir (.git folder).
@@ -72,7 +150,9 @@ void repo_destroy(Repository *repo);
  * @return A heap-allocated string containing the full path. 
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_path(Repository *repo, const char *path);
+char *repo_path(Repository *repo, const char *path){
+
+}
 
 /**
  * repo_file - Computes a path under gitdir and ensures the parent directory exists.
@@ -87,7 +167,9 @@ char *repo_path(Repository *repo, const char *path);
  * could not be created.
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_file(Repository *repo, const char *path, bool mkdir);
+char *repo_file(Repository *repo, const char *path, bool mkdir){
+
+}
 
 /**
  * repo_dir - Computes a path under gitdir and ensures the directory itself exists.
@@ -99,7 +181,9 @@ char *repo_file(Repository *repo, const char *path, bool mkdir);
  * but is not a directory, or if creation failed.
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_dir(Repository *repo, const char *path, bool mkdir);
+char *repo_dir(Repository *repo, const char *path, bool mkdir){
+
+}
 
 /**
  * repo_default_config - Generates the default INI-style configuration string for a new repository.
@@ -109,4 +193,37 @@ char *repo_dir(Repository *repo, const char *path, bool mkdir);
  * @return A heap-allocated string containing the default configuration text.
  * @note The caller MUST free() the returned string.
  */
-char *repo_default_config();
+char *repo_default_config(){
+
+}
+
+/* Static Functions */
+
+/**
+ * handler - Callback function for the INI parser to populate a Configuration struct.
+ *
+ * This function is invoked by the INI parser for every section/name/value triplet 
+ * found in the configuration file. It maps specific INI keys (like protocol.version) 
+ * to the corresponding fields in the Configuration structure passed via the user pointer.
+ *
+ * @param user A pointer to the Configuration struct being populated (passed as void*).
+ * @param section The name of the current INI section (e.g., "core", "user").
+ * @param name The name of the configuration key.
+ * @param value The value associated with the key as a string.
+ * @return Returns 1 on a successful match and update, or 0 if the section/name 
+ * is unknown or an error occurred.
+ */
+static int handler(void* user, const char* section, const char* name, const char* value){
+    Configuration *pconfig = (Configuration*) user;
+
+    #define MATCH(s, n) streq(section, s) && streq(name, n)
+    if (MATCH("core", "repositoryformatversion")){
+        pconfig->repo_format_version = atoi(value);
+    } else if (MATCH("core", "filemode")){
+        pconfig->filemode = streq(value, "true");
+    } else if (MATCH("core", "bare")){
+        pconfig->bare = streq(value, "true");
+    }
+
+    return 1;
+}

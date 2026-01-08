@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <errno.h>
 
@@ -56,12 +57,14 @@ static inline void *safe_strdup(const char *s){
 
 /* Functions */
 
-char *str_join(const char *s1, ...);
+char *path_join(const char *s1, ...);
+bool is_directory(const char *path);
+bool file_exists(const char *path);
 
 /* Miscellaneous */
 
 #define chomp(s)            if (strlen(s)) { s[strlen(s) - 1] = 0; }
-#define chomp_quotes(s)      if (strlen(s)) { s[strlen(s) -1] = 0; s[0] = 0;}
+#define chomp_quotes(s)     if (strlen(s)) { s[strlen(s) - 1] = 0; s[0] = 0;}
 #define min(a, b)           ((a) < (b) ? (a) : (b))
 #define streq(a, b)         (strcmp(a, b) == 0)
 
