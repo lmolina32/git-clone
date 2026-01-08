@@ -10,7 +10,7 @@
 
 /* Macros */
 
-#define MAX_NAME 1<<8
+#define MAX_NAME (1<<8)
 
 #define MALLOC_CHECK(ptr) \
     do { \
@@ -28,43 +28,35 @@
         } \
     } while (0)
 
-/* Print indent */
+/* Memory & IO */
 
-#define print_indent(i) \
-    do { \
-        for (int _i = 0; _i < ((i) * 4); _i++) \
-        printf(" "); \
-    } while (0)
+static inline FILE *safe_fopen(const char *f, const char *s){
+    FILE *fp = fopen((f), (s));
+    FILE_CHECK(fp, f);
+    return fp; 
+}
 
-/* File open */
+static inline void *safe_malloc(size_t t, size_t s){
+    void *ptr = malloc((t) * (s)); 
+    MALLOC_CHECK(ptr); 
+    return ptr; 
+} 
 
-#define safe_fopen(f, s) ({ \
-    FILE *_fp = fopen((f), (s)); \
-    FILE_CHECK(_fp, f); \
-    _fp; \
-})
+static inline void *safe_calloc(size_t t, size_t s){ 
+    void *ptr = calloc((s), (t)); 
+    MALLOC_CHECK(ptr); 
+    return ptr; 
+}
 
-/* Malloc */
+static inline void *safe_strdup(const char *s){ 
+    char *ptr = strdup(s); 
+    MALLOC_CHECK(ptr); 
+    return ptr; 
+}
 
-#define safe_malloc(t, s) ({ \
-    void *_ptr = malloc((t) * (s)); \
-    MALLOC_CHECK(_ptr); \
-    _ptr; \
-}) 
+/* Functions */
 
-#define safe_calloc(t, s) ({ \
-    void *_ptr = calloc((s), (t)); \
-    MALLOC_CHECK(_ptr); \
-    _ptr; \
-})
-
-/* strdup */
-
-#define safe_strdup(s) ({ \
-    char *_ptr = strdup(s); \
-    MALLOC_CHECK(_ptr); \
-    _ptr; \
-})
+char *str_join(const char *s1, ...);
 
 /* Miscellaneous */
 
