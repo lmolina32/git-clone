@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <limits.h>
 #include <assert.h>
 
 /* Forward Declaration of static Functions */
@@ -164,8 +165,46 @@ fail:
  */
 Repository *repo_find(const char *path, bool required){
     if (!path) { return NULL; }
-    if (required) {}
-    return NULL;
+
+    char *real_path = realpath(path, NULL);
+    if (!real_path) { return NULL; }
+
+    char *gitdir = path_join(real_path, ".git", NULL);
+    
+    if (is_directory(gitdir)){
+
+        free(gitdir);
+        Repository *repo = repo_create(real_path, false);
+        free(real_path);
+        return repo;
+    }
+
+    free(gitdir);
+
+    char *parent = path_join(path, "..", NULL);
+    char *real_parent = realpath(parent, NULL);
+
+    free(parent);
+    if (!real_parent){
+        free(real_path);
+        return NULL;
+    }
+
+    if (streq(real_parent, real_path)){
+        free(real_path);
+        free(real_parent);
+        if (required){
+            fprintf(stderr, "repo_find: no git directory\n");
+            exit(EXIT_FAILURE);
+        }
+        return NULL;
+    } 
+
+    free(real_path);
+    Repository *found= repo_find(real_parent, required);
+    free(real_parent);
+    return found;
+
 }
 
 

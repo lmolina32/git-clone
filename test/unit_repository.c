@@ -99,10 +99,7 @@ int test_01_repo_create() {
     assert(repo_v1 == NULL);
     printf("Test 4 Passed: Correctly rejected unsupported version 1\n");
 
-    // --- Cleanup ---
-    remove(config_path);
-    rmdir(git_path);
-    rmdir(test_path);
+    remove_directory(test_path);
 
     printf("\nAll repo_create tests passed successfully!\n");
     return EXIT_SUCCESS;
@@ -193,13 +190,8 @@ int test_03_repo_dir() {
     assert(res4 == NULL); 
     printf("Test 4 Passed: Handled path blocked by file correctly\n");
 
-    remove(file_path);
+    remove_directory("test_wd");
     free(file_path);
-    rmdir("test_wd/.git/refs/tags");
-    rmdir("test_wd/.git/refs");
-    rmdir("test_wd/.git/objects");
-    rmdir("test_wd/.git");
-    rmdir("test_wd");
 
     printf("\nAll repo_dir tests passed successfully!\n");
     return EXIT_SUCCESS;
@@ -240,13 +232,7 @@ int test_04_repo_file(){
     assert(res3 == NULL);
     printf("Test 3 Passed: Correctly failed when mkdir=false and path missing\n");
 
-    remove("test_wd_file/.git/logs/HEAD");
-    rmdir("test_wd_file/.git/logs");
-    rmdir("test_wd_file/.git/refs/remotes/origin");
-    rmdir("test_wd_file/.git/refs/remotes");
-    rmdir("test_wd_file/.git/refs");
-    rmdir("test_wd_file/.git");
-    rmdir("test_wd_file");
+    remove_directory("test_wd_file");
 
     printf("\nAll repo_file tests passed successfully!\n");
     return EXIT_SUCCESS;
@@ -298,21 +284,62 @@ int test_05_repo_init() {
     assert(repo_fail == NULL);
     printf("Test 2 Passed: Correctly refused to overwrite non-empty .git\n");
 
-    // --- Teardown ---
-    remove("test_new_git_repo/.git/HEAD");
-    remove("test_new_git_repo/.git/config");
-    remove("test_new_git_repo/.git/description");
-    rmdir("test_new_git_repo/.git/branches");
-    rmdir("test_new_git_repo/.git/objects");
-    rmdir("test_new_git_repo/.git/refs/tags");
-    rmdir("test_new_git_repo/.git/refs/heads");
-    rmdir("test_new_git_repo/.git/refs");
-    rmdir("test_new_git_repo/.git");
-    rmdir("test_new_git_repo");
-    
+    remove_directory("test_new_git_repo");
     repo_destroy(repo);
 
     printf("\nAll repo_init tests passed successfully!\n");
+    return EXIT_SUCCESS;
+}
+
+int test_06_repo_find() {
+    printf("Running repo_find tests...\n");
+
+    // 1. Setup: Create a repository and a deep subfolder structure
+    // test_root/
+    // └── .git/
+    // └── level1/
+    //     └── level2/
+    const char *repo_root = "test_root";
+    const char *deep_path = "test_root/level1/level2";
+
+    // Use your repo_init to set up a valid repo
+    Repository *initial_repo = repo_init(repo_root);
+    assert(initial_repo != NULL);
+    repo_destroy(initial_repo);
+
+    // Create subdirectories
+    printf("herel");
+    mkdir_p(deep_path, 0755);
+
+    // --- Test 1: Finding repo from the root ---
+    printf("herel");
+    Repository *found1 = repo_find(repo_root, false);
+    assert(found1 != NULL);
+    assert(strstr(found1->gitdir, ".git") != NULL);
+    printf("Test 1 Passed: Found repo from root directory\n");
+    repo_destroy(found1);
+
+    // --- Test 2: Finding repo from deep subfolder (Recursion) ---
+    Repository *found2 = repo_find(deep_path, false);
+    assert(found2 != NULL);
+    // Verify it found the correct root
+    char *abs_repo_root = realpath(repo_root, NULL);
+    char *abs_found_root = realpath(found2->worktree, NULL);
+    assert(strcmp(abs_repo_root, abs_found_root) == 0);
+    printf("Test 2 Passed: Found repo from deep subdirectory\n");
+    
+    free(abs_repo_root);
+    free(abs_found_root);
+    repo_destroy(found2);
+
+    // --- Test 3: Searching outside of a repository ---
+    Repository *found3 = repo_find("../../../../", false);
+    assert(found3 == NULL);
+    printf("Test 3 Passed: Correctly returned NULL for non-repo path\n");
+
+    remove_directory("test_root");
+
+    printf("\nAll repo_find tests passed successfully!\n");
     return EXIT_SUCCESS;
 }
 
@@ -326,6 +353,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    3. Test repo_dir\n");
         fprintf(stderr, "    4. Test repo_file\n");
         fprintf(stderr, "    5. Test repo_init\n");
+        fprintf(stderr, "    6. Test repo_find\n");
         return EXIT_FAILURE;
     }
 
@@ -339,6 +367,7 @@ int main(int argc, char *argv[]) {
         case 3:  status = test_03_repo_dir(); break;
         case 4:  status = test_04_repo_file(); break;
         case 5:  status = test_05_repo_init(); break;
+        case 6:  status = test_06_repo_find(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
