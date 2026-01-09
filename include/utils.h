@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
 
 /* Macros */
 
@@ -60,6 +61,8 @@ static inline void *safe_strdup(const char *s){
 char *path_join(const char *s1, ...);
 bool is_directory(const char *path);
 bool file_exists(const char *path);
+bool mkdir_p(const char *path, mode_t mode); 
+bool is_directory_empty(const char *path);
 
 /* Miscellaneous */
 

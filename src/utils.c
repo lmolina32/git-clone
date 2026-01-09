@@ -8,7 +8,9 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
 
 /* Functions */
 
@@ -72,11 +74,7 @@ bool is_directory(const char *path){
     if (!path) { return false; }
 
     struct stat sb;
-
-    if (stat(path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-        return true;
-    }
-    return false;
+    return stat(path, &sb) == 0 && S_ISDIR(sb.st_mode);
 }
 
 /**
@@ -92,4 +90,85 @@ bool is_directory(const char *path){
 bool file_exists(const char *path){
     if (!path) return false;
     return access(path, F_OK) == 0;
+}
+
+
+/**
+ * mkdir_p - Recursively creates a directory and any missing parent directories.
+ *
+ * This function traverses the provided path and ensures that every directory 
+ * level exists. If a directory does not exist, it is created with the 
+ * specified mode.
+ *
+ * @param path The filesystem path to create.
+ * @param mode The file mode (permissions) to use for newly created directories.
+ * @return True if the directory path was successfully created or already exists, 
+ * false if any directory creation failed.
+ */
+bool mkdir_p(const char *path, mode_t mode){
+    if (!path || *path == '\0') { return false; }
+
+    char *full_path = safe_strdup(path);
+    char *subpath = full_path;
+    struct stat sb;
+    bool status = true; 
+
+    if (subpath[0] == '/') { subpath++; }
+
+    while (*subpath != '\0'){
+        while (*subpath != '/' && *subpath != '\0') { subpath++; }
+        char next_char = *subpath;
+        *subpath = '\0'; 
+
+        if (stat(full_path, &sb) != 0){
+            if (mkdir(full_path, mode) == -1){ 
+                fprintf(stderr, "mkdir_p: failed to make directory\n");
+                status = false; 
+                break; 
+            }
+        } else if (!S_ISDIR(sb.st_mode)){
+            fprintf(stderr, "mkdir_p: Path given exists but is not a directory\n");
+            status = false; 
+            break; 
+        } 
+        if (next_char == '\0') { break; }
+
+        *subpath = next_char;
+        subpath++;
+    }
+
+    free(full_path);
+    return status; 
+}
+
+/**
+ * is_directory_empty - Determines if a directory contains any files or subdirectories.
+ *
+ * This function opens the directory at the specified path and iterates through its 
+ * entries. It ignores the standard "." and ".." entries. If any other entry is 
+ * found, the directory is considered non-empty.
+ *
+ * @param path The filesystem path to the directory to be checked.
+ * @return True if the directory exists and contains no files or subdirectories, 
+ * false if it contains entries or if the path could not be opened.
+ */
+bool is_directory_empty(const char *path){
+    if (!path) { return false; }
+
+    bool empty = true;
+    DIR *d;
+
+    if ((d = opendir(path)) == NULL){
+        fprintf(stderr, "is_directory_empty: cannot open %s\n", path);
+        return false;
+    }
+
+    for (struct dirent *e = readdir(d); e; e = readdir(d)){
+        if(streq(e->d_name, ".") || streq(e->d_name, "..")){ continue; }
+        empty = false;
+        break;
+    }
+
+    closedir(d);
+    return empty;
 }
