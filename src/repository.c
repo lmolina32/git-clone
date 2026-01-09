@@ -54,11 +54,15 @@ Repository *repo_create(const char *path, bool force){
 
     if (config_file_path && file_exists(config_file_path)){
         repo->config = repo_config_create(config_file_path);
-        if (!repo->config){ goto fail; }
+        if (!repo->config){ 
+            free(config_file_path);
+            goto fail; 
+        }
     } else if (!force){
        fprintf(stderr, "repo_create: Configuration File is missing\n"); 
        goto fail;
     }
+    free(config_file_path);
 
     if (!force && repo->config->repo_format_version != 0){
         fprintf(stderr, "repo_create: Unsupported repositoryformatversion: %d\n", repo->config->repo_format_version);
@@ -184,6 +188,7 @@ Configuration *repo_config_create(const char *path){
 
     if (ini_parse(path, handler, config) < 0){
         fprintf(stderr, "repo_config_create: cannot load %s\n", path);
+        free(config);
         return NULL;
     }
 
