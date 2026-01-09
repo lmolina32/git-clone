@@ -50,6 +50,13 @@ bin/unit_%: build/unit_%.o $(GIT_OBJECTS) | bin
 	@echo "Linking $@"
 	@$(LD) $(LDFLAGS) $^ -o $@ 
 
+test: $(GIT_PROGRAM)
+	@chmod +x scripts/*.sh
+	@EXIT=0; for test in scripts/run_*_unit.sh; do 	\
+	    $$test;					\
+	    EXIT=$$(($$EXIT + $$?));			\
+	done; exit $$EXIT
+
 clean:
 	@echo "Removing Objects"
 	@rm -f $(GIT_OBJECTS) $(GIT_TEST_OBJS) $(GIT_MAIN_OBJ)
