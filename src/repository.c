@@ -9,10 +9,14 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <assert.h>
 
 /* Forward Declaration of static Functions */
 
 static int handler(void* user, const char* section, const char* name, const char* value);
+static char *build_path(Repository *repo, va_list args);
 
 /* Functions */
 
@@ -45,8 +49,6 @@ Repository *repo_create(const char *path, bool force){
         fprintf(stderr, "repo_create: Not a Git Repository %s\n", repo->gitdir);
         goto fail;
     }
-
-    // TODO: add repo_file(repo, "config")
 
     char *config_file_path = path_join(repo->gitdir, "config", NULL);
 
@@ -83,6 +85,65 @@ Repository *repo_create(const char *path, bool force){
  */
 Repository *repo_init(const char *path){
     if (!path) { return NULL; }
+    Repository *repo = repo_create(path, true);
+
+    if (!repo) { return NULL; }
+
+    struct stat sb;
+    if (stat(repo->worktree, &sb) == 0){
+        if (!S_ISDIR(sb.st_mode)){
+            fprintf(stderr, "repo_init: %s is not a directory\n", repo->worktree);
+            goto fail;
+        } 
+        if (stat(repo->gitdir, &sb) == 0 && !is_directory_empty(repo->gitdir)){
+            fprintf(stderr, "repo_init: %s directory is not empty\n", repo->gitdir);
+            goto fail;
+        }
+    } else {
+        if(!mkdir_p(repo->worktree, (mode_t)0755)){
+            fprintf(stderr, "repo_init: cannot create directory %s\n", repo->worktree);
+            goto fail;
+        }
+    }
+
+    char *s = repo_dir(repo, true, "branches", NULL);
+    assert(s != NULL);
+    free(s);
+    s = repo_dir(repo, true, "objects", NULL);
+    assert(s != NULL);
+    free(s);
+    s = repo_dir(repo, true, "refs", "tags", NULL);
+    assert(s != NULL);
+    free(s);
+    s = repo_dir(repo, true, "refs", "heads", NULL);
+    assert(s != NULL);
+    free(s);
+
+    s = repo_file(repo, false, "description", NULL);
+    FILE *f = safe_fopen(s, "w");
+    fprintf(f, "Unnamed repository; edit this file 'description' to name the repository.\n");
+    fclose(f);
+    free(s);
+
+    s = repo_file(repo, false, "HEAD", NULL);
+    f = safe_fopen(s, "w");
+    fprintf(f, "ref: refs/heads/master\n");
+    fclose(f);
+    free(s);
+
+    s = repo_file(repo, false, "config", NULL);
+    f = safe_fopen(s, "w");
+    fprintf(f, "[core]\n");
+    fprintf(f, "repositoryformatversion = 0\n");
+    fprintf(f, "filemode = false\n");
+    fprintf(f, "bare = false\n");
+    fclose(f);
+    free(s);
+
+    return repo;
+
+fail:
+    repo_destroy(repo);
     return NULL;
 }
 
@@ -158,24 +219,11 @@ void repo_destroy(Repository *repo){
  */
 char *repo_path(Repository *repo, ...){
     if (!repo) { return NULL; }
-
     va_list args;
     va_start(args, repo);
-    const char *s = va_arg(args, const char *);
-    char *path = path_join(repo->gitdir, s, NULL);
-    if (!s) { return path; }
-
-    char *full_path = NULL;
-
-    while ((s = va_arg(args, const char *))){
-        full_path = path_join(path, s, NULL);
-        free(path);
-        path = full_path;
-    }
-
+    char *arg_path = build_path(repo, args);
     va_end(args);
-    if (!full_path){ full_path = path; }
-    return full_path;
+    return arg_path;
 }
 
 /**
@@ -185,14 +233,42 @@ char *repo_path(Repository *repo, ...){
  * the leading directory components if they are missing.
  *
  * @param repo The repository context.
- * @param path The subpath to the file.
  * @param mkdir If true, create the directory containing the file.
+ * @param ...   Additional strings to join. The list MUST end with NULL.
  * @return A heap-allocated string of the full path, or NULL if directories 
+ * @note The caller MUST provide NULL as the last argument to signal the end.
  * could not be created.
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_file(Repository *repo, const char *path, bool mkdir){
-    if (repo || path || mkdir) { return NULL; }
+char *repo_file(Repository *repo, bool mkdir, ...){
+    if (!repo) { return NULL; }
+
+    va_list args;
+    va_start(args, mkdir);
+    char *path = build_path(repo, args);
+    va_end(args);
+
+    int ch = '/';
+    char *valid_path = path + strlen(repo->gitdir) + 1;
+    char *last_dir = strrchr(valid_path, ch);
+
+    if (last_dir){
+        *last_dir = '\0';
+        char *dir_path = repo_dir(repo, mkdir, valid_path, NULL);
+        if (dir_path){
+            free(dir_path);
+            *last_dir = '/';
+            return path;
+        }
+    } else {
+        char *dir_path = repo_dir(repo, mkdir, NULL);
+        if (dir_path){
+            free(dir_path);
+            return path;
+        }
+    }
+
+    free(path);
     return NULL;
 }
 
@@ -200,28 +276,37 @@ char *repo_file(Repository *repo, const char *path, bool mkdir){
  * repo_dir - Computes a path under gitdir and ensures the directory itself exists.
  *
  * @param repo The repository context.
- * @param path The subpath of the directory.
  * @param mkdir If true, create the directory (and parents) if missing.
+ * @param ...   Additional strings to join. The list MUST end with NULL.
  * @return A heap-allocated string of the full path, or NULL if path exists 
  * but is not a directory, or if creation failed.
+ * @note The caller MUST provide NULL as the last argument to signal the end.
  * @note The caller MUST free() the returned string when finished.
  */
-char *repo_dir(Repository *repo, const char *path, bool mkdir){
-    if (repo || path || mkdir) { return NULL; }
+char *repo_dir(Repository *repo, bool mkdir, ...){
+    if (!repo) { return NULL; }
+    
+    va_list args;
+    va_start(args, mkdir);
+    char *path = build_path(repo, args);
+    va_end(args);
+    
+    struct stat sb;
+    if (stat(path, &sb) == 0){
+        if (S_ISDIR(sb.st_mode)){ return path; }
+        else {
+            fprintf(stderr,"repo_dir: Not a directory: %s\n", path);
+            goto fail;
+        }
+    }
+
+    if (mkdir && mkdir_p(path, (mode_t)0755)){ return path; } 
+
+    fail:
+    free(path);
     return NULL;
 }
 
-/**
- * repo_default_config - Generates the default INI-style configuration string for a new repository.
- *
- * Sets repositoryformatversion=0, filemode=false, and bare=false.
- *
- * @return A heap-allocated string containing the default configuration text.
- * @note The caller MUST free() the returned string.
- */
-char *repo_default_config(){
-    return NULL;
-}
 
 /* Static Functions */
 
@@ -252,4 +337,33 @@ static int handler(void* user, const char* section, const char* name, const char
     }
 
     return 1;
+}
+
+/**
+ * build_path - Variadic helper to construct a filesystem path from multiple components.
+ *
+ * This function takes a variable list of string segments and joins them using the 
+ * system's path separator. It iteratively allocates memory for the growing path, 
+ * ensuring each segment is properly appended.
+ *
+ * @param repo The repository context.
+ * @param args A va_list of const char* path segments. The list must be NULL-terminated.
+ * @return A dynamically allocated string containing the full path, or NULL if the 
+ * initial segment is missing.
+ * @note The caller is responsible for freeing the returned string. This function 
+ * consumes the va_list; the caller must handle va_start and va_end.
+ */
+static char *build_path(Repository *repo, va_list args){
+    char *path = NULL;
+    char *full_path = NULL;
+    const char *s = va_arg(args, const char *);
+    if (!s) {return safe_strdup(repo->gitdir); }
+    path = path_join(repo->gitdir, s, NULL);
+
+    while ((s = va_arg(args, const char *))){
+        full_path = path_join(path, s, NULL);
+        free(path);
+        path = full_path;
+    }
+    return full_path != NULL ? full_path : path;
 }
