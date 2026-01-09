@@ -140,6 +140,84 @@ int test_02_file_exists() {
     return EXIT_SUCCESS;
 }
 
+int test_03_mkdir_p() {
+    printf("Running mkdir_p tests...\n");
+
+    const char *deep_path = "tmp_a/tmp_b/tmp_c";
+    const char *blocking_file = "tmp_block.txt";
+
+    // 1. Test: Create deep nested directory
+    assert(mkdir_p(deep_path, 0755) == true);
+    struct stat sb;
+    assert(stat("tmp_a/tmp_b/tmp_c", &sb) == 0 && S_ISDIR(sb.st_mode));
+    printf("Test 1 Passed: Deep nested directory created\n");
+
+    // 2. Test: Run again on existing directory (should be idempotent)
+    assert(mkdir_p(deep_path, 0755) == true);
+    printf("Test 2 Passed: Idempotency (calling on existing dir succeeds)\n");
+
+    // 3. Test: Path blocked by a file
+    FILE *f = fopen(blocking_file, "w");
+    fclose(f);
+    assert(mkdir_p("tmp_block.txt/subdir", 0755) == false);
+    printf("Test 3 Passed: Correctly failed when blocked by a file\n");
+
+    // 4. Test: NULL handling
+    assert(mkdir_p(NULL, 0755) == false);
+    printf("Test 4 Passed: NULL handled\n");
+
+    rmdir("tmp_a/tmp_b/tmp_c");
+    rmdir("tmp_a/tmp_b");
+    rmdir("tmp_a");
+    remove(blocking_file);
+
+    printf("\nAll mkdir_p tests passed successfully!\n");
+    return EXIT_SUCCESS;
+}
+
+int test_04_is_directory_empty() {
+    printf("Running is_directory_empty tests...\n");
+
+    const char *empty_dir = "test_empty";
+    const char *full_dir = "test_full";
+    const char *file_in_dir = "test_full/dummy.txt";
+
+    // 1. Setup
+    mkdir(empty_dir, 0755);
+    mkdir(full_dir, 0755);
+    FILE *f = fopen(file_in_dir, "w");
+    if (f) fclose(f);
+
+
+    // Test 1: Genuinely empty directory
+    assert(is_directory_empty(empty_dir) == true);
+    printf("Test 1 Passed: Correctly identified empty directory\n");
+
+    // Test 2: Directory with a file
+    assert(is_directory_empty(full_dir) == false);
+    printf("Test 2 Passed: Correctly identified non-empty directory\n");
+
+    // Test 3: Directory with a hidden file (should not be empty)
+    const char *hidden_file = "test_empty/.hidden";
+    f = fopen(hidden_file, "w");
+    if (f) fclose(f);
+    assert(is_directory_empty(empty_dir) == false);
+    printf("Test 3 Passed: Hidden files make directory non-empty\n");
+
+    // Test 4: Non-existent path
+    assert(is_directory_empty("ghost_folder") == false);
+    printf("Test 4 Passed: Handled missing path\n");
+
+    // --- Teardown ---
+    remove(hidden_file);
+    remove(file_in_dir);
+    rmdir(empty_dir);
+    rmdir(full_dir);
+
+    printf("\nAll is_directory_empty tests passed!\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -147,6 +225,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    0. Test str_join\n");
         fprintf(stderr, "    1. Test is_directory\n");
         fprintf(stderr, "    2. Test file_exists\n");
+        fprintf(stderr, "    3. Test mkdir_p\n");
+        fprintf(stderr, "    4. Test is_directory_empty\n");
         return EXIT_FAILURE;
     }
 
@@ -157,6 +237,8 @@ int main(int argc, char *argv[]) {
         case 0:  status = test_00_path_join(); break;
         case 1:  status = test_01_is_directory(); break;
         case 2:  status = test_02_file_exists(); break;
+        case 3:  status = test_03_mkdir_p(); break;
+        case 4:  status = test_04_is_directory_empty(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
