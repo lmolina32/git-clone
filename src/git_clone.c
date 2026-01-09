@@ -25,5 +25,5 @@ int main(int argc, char *argv[]){
     }
 
 
-    return status;
+    return status ? EXIT_SUCCESS : EXIT_FAILURE;
 }

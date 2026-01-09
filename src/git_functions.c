@@ -1,6 +1,7 @@
 /* git_functions: functions for main git driver */
 
 #include "git_functions.h"
+#include "repository.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,14 +21,23 @@
  * @return true if the repository was successfully initialized,
  *         false otherwise.
  */
-bool cmd_init(int arg_count, char *args[]){
+bool cmd_init(int arg_count, char *argv[]){
     if (arg_count > 1){ 
         fprintf(stderr, "usage: git init [<directory>]\n"); 
         return false; 
     }
 
-    if (args){}
+    Repository *repo;
+    if (arg_count){
+        repo = repo_init(argv[0]);
+    } else {
+        repo = repo_init(".");
+    }
 
+    if (repo){
+        repo_destroy(repo);
+        return true;
+    }
 
-    return true;
+    return false;
 }
