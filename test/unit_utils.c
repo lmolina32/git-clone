@@ -83,8 +83,7 @@ int test_01_is_directory(){
     assert(is_directory(NULL) == false);
     printf("Test 5 Passed: Handling NULL\n");
 
-    rmdir(test_nested);
-    rmdir(test_dir);
+    remove_directory(test_dir);
     remove(test_file);
 
     printf("\nAll path_join tests passed successfully!\n");
@@ -131,10 +130,7 @@ int test_02_file_exists() {
     assert(file_exists(NULL) == false);
     printf("Test 5 Passed: Handled NULL input gracefully\n");
 
-    remove(nested_file);
-    remove(hidden_file);
-    rmdir(nested_dir);
-    rmdir(dir);
+    remove_directory(dir);
 
     printf("All file_exists tests passed successfully!\n\n");
     return EXIT_SUCCESS;
@@ -166,9 +162,7 @@ int test_03_mkdir_p() {
     assert(mkdir_p(NULL, 0755) == false);
     printf("Test 4 Passed: NULL handled\n");
 
-    rmdir("tmp_a/tmp_b/tmp_c");
-    rmdir("tmp_a/tmp_b");
-    rmdir("tmp_a");
+    remove_directory("tmp_a");
     remove(blocking_file);
 
     printf("\nAll mkdir_p tests passed successfully!\n");
@@ -208,13 +202,49 @@ int test_04_is_directory_empty() {
     assert(is_directory_empty("ghost_folder") == false);
     printf("Test 4 Passed: Handled missing path\n");
 
-    // --- Teardown ---
-    remove(hidden_file);
-    remove(file_in_dir);
-    rmdir(empty_dir);
-    rmdir(full_dir);
+    remove_directory(empty_dir);
+    remove_directory(full_dir);
 
     printf("\nAll is_directory_empty tests passed!\n");
+    return EXIT_SUCCESS;
+}
+
+int test_05_remove_directory() {
+    printf("Running remove_directory tests...\n");
+
+    // 1. Setup: Create a nested structure
+    // test_wipe/
+    // ├── file1.txt
+    // └── sub/
+    //     └── file2.txt
+    const char *base = "test_wipe";
+    const char *sub = "test_wipe/sub";
+    const char *f1 = "test_wipe/file1.txt";
+    const char *f2 = "test_wipe/sub/file2.txt";
+
+    mkdir(base, 0755);
+    mkdir(sub, 0755);
+    FILE *fp1 = fopen(f1, "w"); fclose(fp1);
+    FILE *fp2 = fopen(f2, "w"); fclose(fp2);
+
+    struct stat sb;
+    assert(stat(f2, &sb) == 0);
+
+    bool result = remove_directory(base);
+
+    // Test 1: Function reports success
+    assert(result == true);
+    printf("Test 1 Passed: remove_directory returned true.\n");
+
+    // Test 2: Verify path no longer exists
+    assert(stat(base, &sb) != 0);
+    printf("Test 2 Passed: Directory tree physically removed from disk.\n");
+
+    // Test 3: Handling non-existent path
+    assert(remove_directory("non_existent_path") == false);
+    printf("Test 3 Passed: Handled missing path correctly.\n");
+
+    printf("\nAll remove_directory tests passed!\n");
     return EXIT_SUCCESS;
 }
 
@@ -227,6 +257,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    2. Test file_exists\n");
         fprintf(stderr, "    3. Test mkdir_p\n");
         fprintf(stderr, "    4. Test is_directory_empty\n");
+        fprintf(stderr, "    5. Test remove_directory\n");
         return EXIT_FAILURE;
     }
 
@@ -239,6 +270,7 @@ int main(int argc, char *argv[]) {
         case 2:  status = test_02_file_exists(); break;
         case 3:  status = test_03_mkdir_p(); break;
         case 4:  status = test_04_is_directory_empty(); break;
+        case 5:  status = test_05_remove_directory(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 

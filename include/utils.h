@@ -63,6 +63,7 @@ bool is_directory(const char *path);
 bool file_exists(const char *path);
 bool mkdir_p(const char *path, mode_t mode); 
 bool is_directory_empty(const char *path);
+bool remove_directory(const char *path);
 
 /* Miscellaneous */
 

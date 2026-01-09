@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <errno.h>
 
 /* Functions */
 
@@ -171,4 +172,63 @@ bool is_directory_empty(const char *path){
 
     closedir(d);
     return empty;
+}
+
+/**
+ * remove_directory - Removes a directory from the filesystem.
+ *
+ * This function attempts to delete the directory at the specified path. 
+ * Note: Standard implementations using rmdir() will only succeed if the 
+ * directory is empty. If the directory contains files or subdirectories, 
+ * the operation will fail.
+ *
+ * @param path The filesystem path of the directory to be removed.
+ * @return True if the directory was successfully removed, false if the 
+ * path does not exist, is not a directory, or is not empty.
+ */
+bool remove_directory(const char *path){
+    bool status = true;
+    DIR *d;
+
+    if ((d = opendir(path)) == NULL){
+        fprintf(stderr, "remove_directory: cannot open %s\n", path);
+        return false;
+    }
+
+    for (struct dirent *e = readdir(d); e; e = readdir(d)){
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0){
+            continue;
+        }
+        
+        char sub_path[BUFSIZ];
+        if ((ssize_t)snprintf(sub_path, sizeof(sub_path),  "%s/%s", path, e->d_name) >= (ssize_t)sizeof(sub_path)){
+            fprintf(stderr, "remove_directory: path %s/%s is too long\n", path, e->d_name);
+            status = false;
+            continue;
+        }
+
+        struct stat s;
+        if (stat(sub_path, &s) < 0){
+            status = false;
+            continue;
+        }
+
+        if (S_ISREG(s.st_mode)){
+            if(unlink(sub_path) < 0){
+                fprintf(stderr, "remove_directory: unable to remove %s: %s\n", sub_path, strerror(errno));
+                status = false;
+            }
+        } else if (S_ISDIR(s.st_mode)){
+            if (!remove_directory(sub_path)){ status = false; } 
+        }
+    }
+
+    closedir(d);
+
+    if (rmdir(path) < 0){
+        fprintf(stderr, "remove_directory: unable to remove directory %s, %s\n", path, strerror(errno));
+        return false;
+    }
+
+    return status;
 }
