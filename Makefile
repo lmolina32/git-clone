@@ -50,7 +50,7 @@ bin/unit_%: build/unit_%.o $(GIT_OBJECTS) | bin
 	@echo "Linking $@"
 	@$(LD) $(LDFLAGS) $^ -o $@ 
 
-test: $(GIT_PROGRAM)
+test: $(GIT_PROGRAM) $(GIT_UNIT_TESTS)
 	@chmod +x scripts/*.sh
 	@EXIT=0; for test in scripts/run_*_unit.sh; do 	\
 	    $$test;					\
