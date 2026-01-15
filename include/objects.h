@@ -6,6 +6,9 @@
 #include <stdio.h>
 
 /* Structures */
+typedef struct {
+    
+} Object;
 
 /* Functions */
 
