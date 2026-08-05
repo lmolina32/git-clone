@@ -1,8 +1,8 @@
 # Configuration 
 
-CC=			 gcc
-LD=			 gcc
-CFLAGS=		 -Wall -Wextra -Wpedantic -g -Og
+CC=			 gcc-16
+LD=			 gcc-16
+CFLAGS=		 -Wall -Wextra -Wpedantic -g -Og -std=c23
 LDFLAGS=	 -Lbuild 
 
 # Files 

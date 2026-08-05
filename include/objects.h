@@ -7,7 +7,7 @@
 
 /* Structures */
 typedef struct {
-    
+    int dummy;
 } Object;
 
 /* Functions */
