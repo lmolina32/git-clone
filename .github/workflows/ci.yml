@@ -16,8 +16,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Verify Compiler 
-        run: gcc-16 --version 
+      - name: Setup Compiler 
+        run: ln -s /usr/local/bin/gcc /usr/local/bin/gcc-16
 
       - name: Build
         run: make 
