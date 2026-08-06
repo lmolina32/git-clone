@@ -1,0 +1,26 @@
+name: Build & Test
+
+on: 
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: gcc:16 
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Compiler 
+        uses: gcc-16 --version 
+
+      - name: Build
+        run: make 
+
+      - name: Run Tests
+        run: make test
