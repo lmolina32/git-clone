@@ -2,7 +2,7 @@
 
 CC=			 gcc-16
 LD=			 gcc-16
-CFLAGS=		 -Wall -Wextra -Wpedantic -g -Og -std=c23
+CFLAGS=		 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wpedantic -g -Og -std=c23
 LDFLAGS=	 -Lbuild 
 
 # Files 
