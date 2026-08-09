@@ -4,7 +4,6 @@
 #define REPOSITORY_H
 
 #include <stdio.h>
-#include <stdbool.h>
 
 /* Macros */
 

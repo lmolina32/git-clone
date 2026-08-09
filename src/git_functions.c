@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 
 /**
@@ -40,4 +39,12 @@ bool cmd_init(int arg_count, char *argv[]){
     }
 
     return false;
+}
+
+bool cmd_cat_file(int arg_count, char *args[]){
+    return true;
+}
+
+bool cmd_hash_object(int arg_count, char *args[]){
+    return true;
 }

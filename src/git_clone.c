@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 
 int main(int argc, char *argv[]){
@@ -21,9 +20,12 @@ int main(int argc, char *argv[]){
     const char *command = argv[argind++];
 
     if (streq(command, "init")){
-        status = cmd_init(argind - argc, &argv[argind]);
+        status = cmd_init(argc - argind, &argv[argind]);
+    } else if (streq(command, "cat-file")){
+        status = cmd_cat_file(argc - argind, &argv[argind]);
+    } else if (streq(command, "hash-object")){
+        status = cmd_hash_object(argc - argind, &argv[argind]);
     }
-
 
     return status ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -31,6 +31,14 @@ if [ ! -x bin/$UNIT ]; then
     exit 1
 fi
 
+if command -v valgrind &> /dev/null; then
+    USE_VALGRIND=1
+    echo -e "Tool: ${GREEN}Valgrind${NC} d.etected."
+else
+    USE_VALGRIND=0
+    echo -e "Tool: Valgrind not found. Falling back to macOS ${GREEN}leaks${NC}."
+fi
+
 TESTS_MAX=$(bin/$UNIT 2>&1 | tail -n 1 | awk '{print $1}' | tr -d '.')
 TOTAL_COUNT=$((TESTS_MAX + 1))
 
@@ -39,15 +47,26 @@ for t in $(seq 0 $TESTS_MAX); do
 
     printf "%-60s... " "$desc"
     
-    valgrind --leak-check=full --error-exitcode=1 bin/$UNIT $t &> $WORKSPACE/test
-    VALGRIND_STATUS=$?
-    
-    LEAKS=$(awk '/ERROR SUMMARY:/ {print $4}' $WORKSPACE/test)
+    if [ $USE_VALGRIND -eq 1 ]; then
+        valgrind --leak-check=full --error-exitcode=1 bin/$UNIT $t &> $WORKSPACE/test
+        VALGRIND_STATUS=$?
+        
+        LEAKS=$(awk '/ERROR SUMMARY:/ {print $4}' $WORKSPACE/test)
 
-    if [ $VALGRIND_STATUS -ne 0 ] || [ "$LEAKS" -ne 0 ]; then
-        error "Failure"
+        if [ $VALGRIND_STATUS -ne 0 ] || [ "$LEAKS" -ne 0 ]; then
+            error "Failure"
+        else
+            echo -e "${GREEN}Success${NC}"
+        fi
     else
-        echo -e "${GREEN}Success${NC}"
+        env MallocStackLogging=1 leaks -atExit -- bin/$UNIT $t &> $WORKSPACE/test
+        LEAKS_STATUS=$?
+        
+        if [ $LEAKS_STATUS -ne 0 ]; then
+            error "Failure"
+        else
+            echo -e "${GREEN}Success${NC}"
+        fi
     fi
 done
 
