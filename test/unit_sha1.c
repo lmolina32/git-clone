@@ -25,7 +25,7 @@ int test_01_sha1_abc() {
     // SHA-1 of "abc" is a9993e364706816aba3e25717850c26c9cd0d89d
     sha1_hex((const unsigned char *)"abc", 3, out);
 
-    assert(strcmp(out, "") == 0);
+    assert(strcmp(out, "a9993e364706816aba3e25717850c26c9cd0d89d") == 0);
     printf("Test 1 Passed: 'abc' SHA-1 matches expected hash\n");
 
     return EXIT_SUCCESS;
