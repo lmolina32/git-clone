@@ -43,10 +43,16 @@ static inline void *safe_malloc(size_t t, size_t s){
     return ptr; 
 } 
 
-static inline void *safe_calloc(size_t t, size_t s){ 
-    void *ptr = calloc((s), (t)); 
+static inline void *safe_calloc(size_t size, size_t count){ 
+    void *ptr = calloc((count), (size)); 
     MALLOC_CHECK(ptr); 
     return ptr; 
+}
+
+static inline void *safe_realloc(void *p, size_t s){
+    void *ptr = realloc((p), (s));
+    MALLOC_CHECK(ptr);
+    return ptr;
 }
 
 static inline void *safe_strdup(const char *s){ 
