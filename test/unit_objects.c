@@ -103,7 +103,7 @@ int test_04_object_hash_fd() {
 
     char *sha1 = object_hash(fd, GIT_BLOB, NULL);
     assert(sha1 != NULL);
-    assert(strcmp(sha1, "d53affc5f806cfe2880c7b621094f8b4b920529") == 0);
+    assert(strcmp(sha1, "0d53affc5f806cfe2880c7b621094f8b4b920529") == 0);
 
     close(fd);
     unlink(temp_path);
