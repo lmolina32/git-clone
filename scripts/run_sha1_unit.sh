@@ -1,6 +1,6 @@
 #!/bin/bash
 
-UNIT=unit_repository
+UNIT=unit_sha1
 WORKSPACE=/tmp/$UNIT.$(id -u)
 FAILURES=0
 
@@ -33,7 +33,7 @@ fi
 
 if command -v valgrind &> /dev/null; then
     USE_VALGRIND=1
-    echo -e "Tool: ${GREEN}Valgrind${NC} d.etected."
+    echo -e "Tool: ${GREEN}Valgrind${NC} detected."
 else
     USE_VALGRIND=0
     echo -e "Tool: Valgrind not found. Falling back to macOS ${GREEN}leaks${NC}."

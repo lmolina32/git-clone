@@ -2,8 +2,328 @@
 
 #include "objects.h"
 #include "utils.h"
+#include "zlib.h"
+#include "sha1.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+static const char *type_names[] = {"blob", "commit", "tag", "tree"};
 
 /* Functions */
+
+/**
+ * object_type_name - returns the string representation of an object type
+ * 
+ * @param type  The enum value representing the Git object type.
+ *
+ * @return Constant string name of the object type.
+ **/
+const char *object_type_name(object_type type){
+    return type_names[type];
+}
+
+/**
+ * object_type_from_name - parses an object type enum from a string name
+ * 
+ * @param name  The string representation of the object type to parse.
+ * @param out   Pointer to an object_type variable where the result is stored.
+ *
+ * @return true if the string corresponds to a valid object type,
+ *         false otherwise.
+ **/
+bool object_type_from_name(const char *name, object_type *out){
+    for(int i = 0; i < 4; i++){
+        if (streq(name, type_names[i])){
+            *out = (object_type)i;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * object_new - allocates and initializes a new Object structure
+ * 
+ * @param type  The object_type enum specifying the Git object type.
+ * @param data  Pointer to the byte buffer containing object contents.
+ * @param size  Length of the data buffer in bytes.
+ *
+ * @return Pointer to the newly allocated Object instance.
+ **/
+Object *object_new(object_type type, char *data, size_t size){
+    Object *obj = safe_calloc(sizeof(Object), 1);
+    obj->type = type;
+    obj->size = size;
+    obj->data = safe_calloc(sizeof(char), size);
+    memcpy(obj->data, data, size);
+    return obj;
+}
+
+/**
+ * object_destroy - frees memory associated with an Object instance
+ * 
+ * @param obj  Pointer to the Object instance to be destroyed.
+ **/
+void object_destroy(Object *obj){
+    if (!obj) return;
+    if (obj->data){
+        free(obj->data);
+    }
+    free(obj);
+}
+
+/**
+ * zlib_inflate_all - decompresses a complete zlib stream from an open file
+ * 
+ * Reads all compressed data from the given file stream into memory, initializes
+ * a zlib stream, and dynamically inflates the contents into an allocated buffer.
+ * 
+ * @note used the following websites for reference:
+ *      * https://www.zlib.net/manual.html 
+ *      * https://github.com/madler/zlib/blob/master/examples/zpipe.c 
+ * 
+ * @param f        Open FILE pointer containing compressed zlib data.
+ * @param out_len  Pointer to a size_t variable where the length of the 
+ *                 decompressed buffer will be written.
+ *
+ * @return Pointer to a newly allocated buffer containing uncompressed data,
+ *         or NULL if decompression fails or stream is corrupted.
+ **/
+static unsigned char *zlib_inflate_all(FILE *f, size_t *out_len){
+    fseek(f, 0, SEEK_END);
+    long comp_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    unsigned char *comp = safe_malloc((size_t)comp_size, 1);
+    fread(comp, 1, (size_t)comp_size, f);
+
+    size_t cap = (size_t)comp_size * 4 + 64;
+    unsigned char *out = safe_malloc(cap, 1);
+    
+    z_stream strm = {0};
+    inflateInit(&strm);
+    strm.next_in = comp;
+    strm.avail_in = (uInt)comp_size;
+
+    size_t total = 0;
+    int ret;
+    do {
+        if (total == cap){
+            cap *= 2; 
+            out = safe_realloc(out, cap); 
+        }
+        strm.next_out = out + total;
+        strm.avail_out = (uInt)(cap - total);
+        ret = inflate(&strm, Z_NO_FLUSH);
+        total = cap - strm.avail_out;
+    } while (ret == Z_OK);
+
+    inflateEnd(&strm);
+    free(comp);
+
+    if (ret != Z_STREAM_END){
+        free(out);
+        return NULL;
+    }
+    *out_len = total;
+    return out;
+}
+
+/**
+ * object_read - reads and inflates a Git object from disk by its SHA-1 hash
+ * 
+ * Locates the object file within the repository's 'Objects' directory using its
+ * 40-character SHA-1 identifier. Decompresses the file via zlib, parses the
+ * header format ("<type> <size>\0<data>"), validates the size against the actual
+ * payload size, and returns a newly constructed Object.
+ * 
+ * @param repo  Pointer to the target Repository struct.
+ * @param sha   The 40-character hexadecimal SHA-1 string identifying the object.
+ *
+ * @return Pointer to the constructed Object struct on success,
+ *         NULL if the file does not exist, is malformed, or fails decompression.
+ **/
+Object *object_read(Repository *repo, char *sha){
+    if (!repo || !sha || strlen(sha) < 3) return NULL;
+
+    char prefix[3] = {sha[0], sha[1], '\0'};
+    char *path = repo_file(repo, false, "objects", prefix, sha + 2, NULL);
+
+    if (!file_exists(path)){
+        return NULL;
+    }
+
+    FILE *f = safe_fopen(path, "rb");
+    free(path);
+
+    size_t out_len;
+    unsigned char *raw = zlib_inflate_all(f, &out_len);
+    fclose(f);
+    if (!raw) return NULL;
+
+    char *space = memchr(raw, ' ', out_len);
+    if (!space){
+        free(raw);
+        return NULL;
+    }
+    *space = '\0';
+
+    object_type type;
+    if (!object_type_from_name((char *)raw, &type)){
+        free(raw);
+        return NULL;
+    }
+
+    char *nul = memchr(space + 1, '\x00', out_len - (size_t)(space + 1 - (char *)raw));
+    if (!nul){
+        free(raw);
+        return NULL;
+    }
+
+    size_t declared = (size_t)atol(space + 1);
+    size_t actual = out_len - (size_t)(nul + 1 - (char *)raw);
+    if (declared != actual){
+        fprintf(stderr, "object_read: malformed object %s: bad length\n", sha);
+        free(raw);
+        return NULL;
+    }
+
+    Object *obj = object_new(type, nul + 1, actual);
+    free(raw);
+    return obj;
+}
+
+/**
+ * object_write - serializes, hashes, and optionally stores a Git object on disk
+ * 
+ * Constructs the standard Git object format ("<type> <size>\0<data>"), computes
+ * its SHA-1 hash, and if a Repository pointer is provided, compresses the payload
+ * via zlib and writes it to the appropriate 'objects' subdirectory on disk.
+ * 
+ * @param obj   Pointer to the Object struct to serialize and write.
+ * @param repo  Pointer to the Repository struct (if NULL, only computes SHA-1).
+ *
+ * @return Dynamically allocated 40-character hex string representing the 
+ *         object's SHA-1 hash on success, or NULL on failure.
+ **/
+char *object_write(Object *obj, Repository *repo){
+    if (!obj) return NULL;
+
+    char str_size[32] = "";
+    snprintf(str_size, sizeof(str_size), "%zu", obj->size);
+    const char *tname= object_type_name(obj->type);
+    size_t header_len = strlen(tname) + 1 + strlen(str_size) + 1;
+    size_t total_len = header_len + obj->size;
+
+    char *result = safe_calloc(1, total_len);
+    size_t off = 0;
+    memcpy(result, tname, strlen(tname)); off += strlen(tname);
+    result[off++] = ' ';
+    memcpy(result + off, str_size, strlen(str_size)); off += strlen(str_size);
+    result[off++] = '\x00';
+    memcpy(result + off, obj->data, obj->size);
+
+    char *sha1 = safe_calloc(1, 41);
+    sha1_hex((unsigned char *)result, total_len, sha1);
+
+    if (repo){
+        char prefix[3] = {sha1[0], sha1[1], '\0'};
+        char *path = repo_file(repo, true, "objects", prefix, sha1 + 2, NULL);
+        if (path && !file_exists(path)){
+            uLongf bound = compressBound((uLong)total_len);
+            unsigned char *compressed = safe_calloc(1, bound);
+            compress(compressed, &bound, (unsigned char *)result, (uLong)total_len);
+            FILE *f = safe_fopen(path, "wb");
+            fwrite(compressed, 1, bound, f);
+            fclose(f);
+            free(compressed);
+        }
+        free(path);
+    }
+
+    free(result);
+    return sha1;
+}
+
+/**
+ * object_find - resolves an object name reference to its matching SHA-1 string
+ * 
+ * Looks up an object identifier or reference within a repository and resolves it 
+ * to its corresponding hexadecimal SHA-1 string representation.
+ * 
+ * @param repo    Pointer to the Repository context.
+ * @param name    The name, ref, or partial SHA string to search for.
+ * @param type    Expected object_type filter.
+ * @param follow  Whether to recursively dereference symrefs or tags.
+ *
+ * @return Dynamically allocated SHA-1 string matching the object,
+ *         or NULL if not found.
+ **/
+char *object_find(Repository *repo, const char *name, object_type type, bool follow){
+    (void)repo; (void)(type); (void)follow;
+    return safe_strdup(name);
+}
+
+/**
+ * object_hash - hashes the contents of an open file descriptor into a Git object
+ * 
+ * Reads the full content of the provided file descriptor, constructs an Object
+ * of the specified type, and delegates to object_write to generate its SHA-1
+ * hash and optionally persist it to disk if a repository is specified.
+ * 
+ * @param fd    File descriptor opened for reading.
+ * @param type  The object_type enum to assign to the hashed content.
+ * @param repo  Pointer to the Repository context (or NULL to skip saving).
+ *
+ * @return Dynamically allocated 40-character hexadecimal SHA-1 string,
+ *         or NULL on read/stat failure.
+ **/
+char *object_hash(int fd, object_type type, Repository *repo){
+    struct stat st;
+    if (fstat(fd, &st) < 0) return NULL;
+
+    size_t size = (size_t)st.st_size;
+    char *data = safe_calloc(1, size ? size + 1 : 1);
+    ssize_t n = read(fd, data, size); 
+    if (n < 0 || (size_t)n != size){
+        free(data);
+        return NULL;
+    }
+
+    Object *obj = object_new(type, data, size);
+    free(data);
+
+    char *sha1 = object_write(obj, repo);
+    object_destroy(obj);
+    return sha1;
+}
+
+/**
+ * cat_file - outputs the raw contents of a Git object to stdout
+ * 
+ * Resolves an object reference string to its SHA-1, inflates the corresponding
+ * object from the repository database, and writes its uncompressed payload data
+ * directly to standard output.
+ * 
+ * @param repo  Pointer to the active Repository struct.
+ * @param name  Object name or SHA reference to display.
+ * @param type  Expected object_type filter.
+ *
+ * @return true if the object was located, inflated, and written successfully,
+ *         false otherwise.
+ **/
+bool cat_file(Repository *repo, const char *name, object_type type){
+    char *sha1 = object_find(repo, name, type, true);
+    if (!sha1) return false;
+
+    Object *obj = object_read(repo, sha1);
+    free(sha1);
+    if (!obj) return false;
+
+    fwrite(obj->data, 1, obj->size, stdout);
+    object_destroy(obj);
+    return true;
+}

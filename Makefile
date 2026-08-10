@@ -2,8 +2,8 @@
 
 CC=			 gcc-16
 LD=			 gcc-16
-CFLAGS=		 -Wall -Wextra -g -Og -std=gnu23
-LDFLAGS=	 -Lbuild 
+CFLAGS=		 -Wall -Wextra -g -Og -std=gnu23 
+LDFLAGS=	 -Lbuild -lz
 
 # Files 
 

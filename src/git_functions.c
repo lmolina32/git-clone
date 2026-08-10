@@ -2,11 +2,14 @@
 
 #include "git_functions.h"
 #include "repository.h"
+#include "objects.h"
+#include "utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 /**
  * cmd_init - Initialize a new repository.
@@ -23,7 +26,7 @@
  */
 bool cmd_init(int arg_count, char *argv[]){
     if (arg_count > 1){ 
-        fprintf(stderr, "usage: git init [<directory>]\n"); 
+        fprintf(stderr, "usage: ./git_clone init [<directory>]\n"); 
         return false; 
     }
 
@@ -40,4 +43,96 @@ bool cmd_init(int arg_count, char *argv[]){
     }
 
     return false;
+}
+
+/**
+ * cmd_cat_file - prints raw contents of an object to stdout 
+ * 
+ * This function implements the 'cat-file' command for the application. 
+ * It parses the command-line arguments to determine the expected object type 
+ * and the object identifier. It then locates the current Git repository, 
+ * retrieves the specified object, and prints its uncompressed contents to 
+ * standard output.
+ * 
+ * @param arg_count  Number of command-line arguments.
+ * @param args       Array of argument strings (expected: <type> <object>).
+ *
+ * @return true if the object was successfully found and printed,
+ *         false on invalid arguments, unknown type, or read failure.
+ **/
+bool cmd_cat_file(int arg_count, char *args[]){
+    if (arg_count != 2){
+        fprintf(stderr, "usage ./git_clone cat-file <type> <object>\n");
+        return false;
+    }
+
+    object_type type;
+    if (!object_type_from_name(args[0], &type)){
+        fprintf(stderr, "cat-file: unknown type '%s'\n", args[0]);
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    bool ok = cat_file(repo, args[1], type);
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_hash_object - computes object ID and optionally creates an object from a file
+ * 
+ * This function implements the 'hash-object' command for the application. 
+ * It parses command-line arguments to determine the target file, the object 
+ * type (-t), and whether to write the resulting object to the repository 
+ * database (-w). It then computes the SHA-1 hash of the file's contents, 
+ * prints the hash to stdout, and optionally saves the object.
+ * 
+ * @param arg_count  Number of command-line arguments.
+ * @param args       Array of argument strings.
+ *
+ * @return true if the object hash was successfully computed and printed,
+ *         false otherwise.
+ **/
+bool cmd_hash_object(int arg_count, char *args[]){
+    object_type type = GIT_BLOB;
+    bool write = false;
+    char *path = NULL;
+
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "-w")){
+            write = true;
+        } else if (streq(args[i], "-t")){
+            if (i + 1 >= arg_count){
+                fprintf(stderr, "usage: ./git_clone hash-object [-w] [-t <type>] <file>\n");
+                return false;
+            }
+            if (!object_type_from_name(args[++i], &type)){
+                fprintf(stderr, "hash-object: unknown type '%s'\n", args[0]);
+                return false;
+            }
+        } else {
+            path = args[i];
+        }
+    }
+
+    if (!path){
+        fprintf(stderr, "usage: ./git_clone hash-object [-w] [-t <type>] <file>\n");
+        return false;
+    }
+
+    Repository *repo = write ? repo_find(".", true) : NULL;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0){ 
+        fprintf(stderr, "hash-object: cannot open %s\n", path);
+        return false;
+    }
+
+    char *sha1 = object_hash(fd, type, repo);
+    close(fd);
+    if (repo) { repo_destroy(repo); }
+    if (!sha1){ return false; }
+
+    printf("%s\n", sha1);
+    free(sha1);
+    return true;
 }
