@@ -360,3 +360,38 @@ Object *commit_from_kvlm(KVLM *kvlm){
     free(data);
     return obj;
 }
+
+/**
+ * object_to_tree - converts a raw Git Object into a Tree struct
+ * 
+ * Validates that the provided object is of type GIT_TREE, then delegates
+ * the parsing of the object's raw payload to tree_parse().
+ * 
+ * @param obj Pointer to the Object struct to convert.
+ * 
+ * @return A pointer to the newly allocated Tree struct, or NULL if the object
+ *         is invalid, NULL, or not a tree.
+ **/
+Tree *object_to_tree(Object *obj){
+    if(!obj || obj->type != GIT_TREE) return NULL;
+    return tree_parse(obj->data, obj->size);
+}
+
+/**
+ * tree_to_object - converts a Tree struct into a raw Git Object
+ * 
+ * Serializes the Tree struct into the Git binary format, then wraps that 
+ * binary data into a newly allocated Object struct initialized with the GIT_TREE type.
+ * 
+ * @param tree Pointer to the Tree struct to convert.
+ * 
+ * @return A pointer to the newly allocated Object struct, or NULL on failure.
+ **/
+Object *tree_to_object(Tree *tree){
+    if (!tree) return NULL;
+    size_t len;
+    char *data = tree_serialize(tree, &len);
+    Object *obj = object_new(GIT_TREE, data, len);
+    free(data);
+    return obj;
+}
