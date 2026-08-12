@@ -2,13 +2,12 @@
 
 #include "utils.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include <unistd.h>
 #include <sys/stat.h>
-
+#include <unistd.h>
 
 int test_00_path_join() {
     printf("Running str_join tests...\n");
@@ -51,7 +50,7 @@ int test_00_path_join() {
     return EXIT_SUCCESS;
 }
 
-int test_01_is_directory(){
+int test_01_is_directory() {
     printf("Running is_directory tests...\n");
 
     const char *test_dir = "test_dir";
@@ -73,7 +72,7 @@ int test_01_is_directory(){
 
     // Test 3: Nested directory
     assert(is_directory(test_nested) == true);
-    printf("Test 3 Passed: Valid nested direcotry\n");
+    printf("Test 3 Passed: Valid nested directory\n");
 
     // Test 4: Non-existent path
     assert(is_directory("src/tmp/tmp") == false);
@@ -86,7 +85,7 @@ int test_01_is_directory(){
     remove_directory(test_dir);
     remove(test_file);
 
-    printf("\nAll path_join tests passed successfully!\n");
+    printf("\nAll is_directory tests passed successfully!\n");
 
     return EXIT_SUCCESS;
 }
@@ -132,7 +131,7 @@ int test_02_file_exists() {
 
     remove_directory(dir);
 
-    printf("All file_exists tests passed successfully!\n\n");
+    printf("\nAll file_exists tests passed successfully!\n");
     return EXIT_SUCCESS;
 }
 
@@ -182,7 +181,6 @@ int test_04_is_directory_empty() {
     FILE *f = fopen(file_in_dir, "w");
     if (f) fclose(f);
 
-
     // Test 1: Genuinely empty directory
     assert(is_directory_empty(empty_dir) == true);
     printf("Test 1 Passed: Correctly identified empty directory\n");
@@ -214,9 +212,9 @@ int test_05_remove_directory() {
 
     // 1. Setup: Create a nested structure
     // test_wipe/
-    // ├── file1.txt
-    // └── sub/
-    //     └── file2.txt
+    // |-- file1.txt
+    // `-- sub/
+    //     `-- file2.txt
     const char *base = "test_wipe";
     const char *sub = "test_wipe/sub";
     const char *f1 = "test_wipe/file1.txt";
@@ -248,16 +246,132 @@ int test_05_remove_directory() {
     return EXIT_SUCCESS;
 }
 
+int test_06_string_set_init_and_basic_add() {
+    printf("Running string set init and basic add test...\n");
+    StringSet set;
+    
+    // Test initialization
+    string_set_init(&set);
+    assert(set.items == NULL);
+    assert(set.count == 0);
+    assert(set.capacity == 0);
+
+    // Test adding and contains
+    string_set_add(&set, "apple");
+    string_set_add(&set, "banana");
+    
+    assert(set.count == 2);
+    assert(set.capacity == 8); // Capacity should jump to 8 on first add
+    
+    assert(string_set_contains(&set, "apple") == true);
+    assert(string_set_contains(&set, "banana") == true);
+    assert(string_set_contains(&set, "cherry") == false);
+
+    // Clean up
+    string_set_destroy(&set);
+    
+    printf("Test 6 Passed: StringSet initializes and adds items correctly\n");
+    return EXIT_SUCCESS;
+}
+
+int test_07_string_set_growth_reallocation() {
+    printf("Running string set growth reallocation test...\n");
+    StringSet set;
+    string_set_init(&set);
+
+    // Add enough items to force the capacity to double (8 -> 16)
+    for (int i = 0; i < 15; i++) {
+        char buffer[16] = {0};
+        snprintf(buffer, sizeof(buffer), "item_%d", i);
+        string_set_add(&set, buffer);
+    }
+
+    assert(set.count == 15);
+    assert(set.capacity >= 15); // Based on logic, this should be 16
+
+    // Verify a few items exist
+    assert(string_set_contains(&set, "item_0") == true);
+    assert(string_set_contains(&set, "item_7") == true);
+    assert(string_set_contains(&set, "item_14") == true);
+    assert(string_set_contains(&set, "item_15") == false);
+
+    string_set_destroy(&set);
+    
+    printf("Test 7 Passed: StringSet dynamically grows capacity as expected\n");
+    return EXIT_SUCCESS;
+}
+
+int test_08_dynbuf_init_and_basic_append() {
+    printf("Running dynbuf init and basic append test...\n");
+    DynBuf db;
+    
+    // Test initialization
+    dynbuf_init(&db);
+    assert(db.cap == 256);
+    assert(db.len == 0);
+    assert(db.data != NULL);
+
+    // Test basic append
+    const char *msg = "hello world";
+    dynbuf_append(&db, msg, strlen(msg));
+
+    assert(db.len == strlen(msg));
+    assert(db.cap == 256); // Should not have reallocated
+    assert(memcmp(db.data, msg, strlen(msg)) == 0);
+
+    // Test destruction resets variables
+    dynbuf_destroy(&db);
+    assert(db.data == NULL);
+    assert(db.len == 0);
+    assert(db.cap == 0);
+    
+    printf("Test 8 Passed: DynBuf initializes and appends basic data\n");
+    return EXIT_SUCCESS;
+}
+
+int test_09_dynbuf_growth_reallocation() {
+    printf("Running dynbuf growth reallocation test...\n");
+    DynBuf db;
+    dynbuf_init(&db);
+
+    // Create a 100-byte chunk of data
+    char chunk[100];
+    memset(chunk, 'A', sizeof(chunk));
+
+    // Append 100 bytes 4 times (400 bytes total)
+    // This will force the buffer to resize beyond its initial 256 capacity
+    for (int i = 0; i < 4; i++) {
+        dynbuf_append(&db, chunk, sizeof(chunk));
+    }
+
+    assert(db.len == 400);
+    assert(db.cap >= 400); // Based on logic, cap should be 512
+    
+    // Verify the data was copied correctly (check first and last byte)
+    char *data_ptr = (char *)db.data;
+    assert(data_ptr[0] == 'A');
+    assert(data_ptr[399] == 'A');
+
+    dynbuf_destroy(&db);
+    
+    printf("Test 9 Passed: DynBuf dynamically reallocates memory when full\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
-        fprintf(stderr, "Where NUMBER is right of the following:\n");
-        fprintf(stderr, "    0. Test str_join\n");
+        fprintf(stderr, "Where NUMBER is one of the following:\n");
+        fprintf(stderr, "    0. Test path_join\n");
         fprintf(stderr, "    1. Test is_directory\n");
         fprintf(stderr, "    2. Test file_exists\n");
         fprintf(stderr, "    3. Test mkdir_p\n");
         fprintf(stderr, "    4. Test is_directory_empty\n");
         fprintf(stderr, "    5. Test remove_directory\n");
+        fprintf(stderr, "    6. Test string_set_init and basic add\n");
+        fprintf(stderr, "    7. Test string_set growth reallocation\n");
+        fprintf(stderr, "    8. Test dynbuf_init and basic append\n");
+        fprintf(stderr, "    9. Test dynbuf growth reallocation\n");
         return EXIT_FAILURE;
     }
 
@@ -271,6 +385,10 @@ int main(int argc, char *argv[]) {
         case 3:  status = test_03_mkdir_p(); break;
         case 4:  status = test_04_is_directory_empty(); break;
         case 5:  status = test_05_remove_directory(); break;
+        case 6:  status = test_06_string_set_init_and_basic_add(); break;
+        case 7:  status = test_07_string_set_growth_reallocation(); break;
+        case 8:  status = test_08_dynbuf_init_and_basic_append(); break;
+        case 9:  status = test_09_dynbuf_growth_reallocation(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 

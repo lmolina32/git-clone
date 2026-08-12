@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -61,6 +62,21 @@ static inline void *safe_strdup(const char *s){
     return ptr; 
 }
 
+/* Structures */
+
+typedef struct {
+    char **items;
+    size_t count;
+    size_t capacity; 
+} StringSet;
+
+
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} DynBuf;
+
 /* Functions */
 
 char *path_join(const char *s1, ...);
@@ -69,6 +85,13 @@ bool file_exists(const char *path);
 bool mkdir_p(const char *path, mode_t mode); 
 bool is_directory_empty(const char *path);
 bool remove_directory(const char *path);
+void string_set_init(StringSet *set);
+bool string_set_contains(StringSet *set, const char *s);
+void string_set_add(StringSet *set, const char *s);
+void string_set_destroy(StringSet *set);
+void dynbuf_init(DynBuf *db);
+void dynbuf_append(DynBuf *db, const void *ptr, size_t n);
+void dynbuf_destroy(DynBuf *db);
 
 /* Miscellaneous */
 

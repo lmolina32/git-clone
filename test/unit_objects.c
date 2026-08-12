@@ -130,6 +130,65 @@ int test_05_object_find_and_cat() {
     return EXIT_SUCCESS;
 }
 
+int test_06_commit_parse() {
+    printf("Running commit_parse test...\n");
+
+    const char *raw_commit = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n\nInitial commit message";
+    
+    // 1. Test valid commit object
+    Object *commit_obj = object_new(GIT_COMMIT, (char *)raw_commit, strlen(raw_commit));
+    KVLM *kvlm = commit_parse(commit_obj);
+    
+    assert(kvlm != NULL);
+    assert(strcmp(kvlm_get(kvlm, "tree"), "4b825dc642cb6eb9a060e54bf8d69288fbee4904") == 0);
+    assert(strcmp(kvlm_get(kvlm, NULL), "Initial commit message") == 0);
+
+    // 2. Test invalid object type (Blob instead of Commit)
+    Object *blob_obj = object_new(GIT_BLOB, "just some text", 14);
+    assert(commit_parse(blob_obj) == NULL);
+
+    // 3. Test NULL handling
+    assert(commit_parse(NULL) == NULL);
+
+    // Cleanup
+    kvlm_destroy(kvlm);
+    object_destroy(commit_obj);
+    object_destroy(blob_obj);
+
+    printf("Test 5 Passed: commit_parse handles valid commits and rejects non-commits\n");
+    return EXIT_SUCCESS;
+}
+
+int test_07_commit_from_kvlm() {
+    printf("Running commit_from_kvlm test...\n");
+
+    // 1. Setup a KVLM object
+    KVLM *kvlm = kvlm_new();
+    kvlm_set(kvlm, "tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+    kvlm_set(kvlm, NULL, "My generated commit");
+
+    // 2. Convert to Object
+    Object *obj = commit_from_kvlm(kvlm);
+    
+    assert(obj != NULL);
+    assert(obj->type == GIT_COMMIT); // Type should automatically be GIT_COMMIT
+    
+    const char *expected_data = 
+        "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n"
+        "\n"
+        "My generated commit";
+
+    assert(obj->size == strlen(expected_data));
+    assert(memcmp(obj->data, expected_data, obj->size) == 0);
+
+    // Cleanup
+    object_destroy(obj);
+    kvlm_destroy(kvlm);
+
+    printf("Test 6 Passed: commit_from_kvlm correctly wraps serialized KVLM into an Object\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -140,6 +199,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    3. Test invalid object read guards\n");
         fprintf(stderr, "    4. Test object hashing from file descriptor\n");
         fprintf(stderr, "    5. Test object find and cat_file helpers\n");
+        fprintf(stderr, "    6. Test commit parse\n");
+        fprintf(stderr, "    7. Test commit from kvlm\n");
         return EXIT_FAILURE;
     }
 
@@ -153,6 +214,8 @@ int main(int argc, char *argv[]) {
         case 3:  status = test_03_object_read_invalid(); break;
         case 4:  status = test_04_object_hash_fd(); break;
         case 5:  status = test_05_object_find_and_cat(); break;
+        case 6:  status = test_06_commit_parse(); break;
+        case 7:  status = test_07_commit_from_kvlm(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
