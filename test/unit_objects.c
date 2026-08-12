@@ -189,6 +189,102 @@ int test_07_commit_from_kvlm() {
     return EXIT_SUCCESS;
 }
 
+int test_08_object_to_tree_invalid() {
+    printf("Running object_to_tree invalid inputs test...\n");
+
+    // Test 1: NULL object
+    assert(object_to_tree(NULL) == NULL);
+
+    // Test 2: Non-tree object (e.g., a blob)
+    Object obj = {0};
+    obj.type = GIT_BLOB; 
+    obj.data = "some data";
+    obj.size = 9;
+    
+    assert(object_to_tree(&obj) == NULL);
+
+    printf("Test 0 Passed: Invalid inputs correctly return NULL\n");
+    return EXIT_SUCCESS;
+}
+
+int test_09_object_to_tree_valid() {
+    printf("Running object_to_tree valid input test...\n");
+
+    // Construct raw tree data in memory
+    char raw_data[100];
+    size_t len = 0;
+
+    const char *entry = "100644 hello.txt";
+    memcpy(raw_data + len, entry, strlen(entry) + 1); // +1 for null terminator
+    len += strlen(entry) + 1;
+    
+    // 20-byte dummy SHA1
+    const unsigned char sha1[20] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 
+        0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14
+    };
+    memcpy(raw_data + len, sha1, 20);
+    len += 20;
+
+    // Create a mock Object struct for the test
+    Object obj;
+    obj.type = GIT_TREE;
+    obj.data = raw_data;
+    obj.size = len;
+
+    Tree *t = object_to_tree(&obj);
+    
+    assert(t != NULL);
+    assert(t->count == 1);
+    assert(strcmp(t->entries[0].path, "hello.txt") == 0);
+    assert(strcmp(t->entries[0].mode, "100644") == 0);
+
+    tree_destroy(t);
+
+    printf("Test 1 Passed: Valid GIT_TREE object parsed into Tree struct\n");
+    return EXIT_SUCCESS;
+}
+
+int test_10_tree_to_object_invalid() {
+    printf("Running tree_to_object invalid inputs test...\n");
+
+    assert(tree_to_object(NULL) == NULL);
+
+    printf("Test 2 Passed: NULL tree correctly returns NULL\n");
+    return EXIT_SUCCESS;
+}
+
+int test_11_tree_to_object_valid() {
+    printf("Running tree_to_object valid input test...\n");
+
+    Tree *t = tree_new();
+    assert(t != NULL);
+    
+    tree_add_entry(t, "100644", "test.c", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    Object *obj = tree_to_object(t);
+    
+    assert(obj != NULL);
+    assert(obj->type == GIT_TREE);
+    assert(obj->size > 0);
+    assert(obj->data != NULL);
+
+    // Verify the serialized data contains our path
+    // (Since tree_serialize writes the mode and path in plaintext before the null byte)
+    assert(strstr((char *)obj->data, "100644 test.c") != NULL);
+
+    // Cleanup
+    tree_destroy(t);
+    
+    // Assuming object_free or similar cleanup exists. If you use a different 
+    // function to free objects, update this accordingly (e.g., object_destroy(obj)).
+    free(obj->data);
+    free(obj);
+
+    printf("Test 3 Passed: Valid Tree struct correctly serialized to Object\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -201,6 +297,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    5. Test object find and cat_file helpers\n");
         fprintf(stderr, "    6. Test commit parse\n");
         fprintf(stderr, "    7. Test commit from kvlm\n");
+        fprintf(stderr, "    8. Test object_to_tree invalid inputs\n");
+        fprintf(stderr, "    9. Test object_to_tree valid input\n");
+        fprintf(stderr, "    10. Test tree_to_object invalid inputs\n");
+        fprintf(stderr, "    11. Test tree_to_object valid input\n");
         return EXIT_FAILURE;
     }
 
@@ -216,6 +316,10 @@ int main(int argc, char *argv[]) {
         case 5:  status = test_05_object_find_and_cat(); break;
         case 6:  status = test_06_commit_parse(); break;
         case 7:  status = test_07_commit_from_kvlm(); break;
+        case 8:  status = test_08_object_to_tree_invalid(); break;
+        case 9:  status = test_09_object_to_tree_valid(); break;
+        case 10: status = test_10_tree_to_object_invalid(); break;
+        case 11: status = test_11_tree_to_object_valid(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
