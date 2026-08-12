@@ -146,7 +146,7 @@ static unsigned char *zlib_inflate_all(FILE *f, size_t *out_len){
  * @return Pointer to the constructed Object struct on success,
  *         NULL if the file does not exist, is malformed, or fails decompression.
  **/
-Object *object_read(Repository *repo, char *sha){
+Object *object_read(Repository *repo, const char *sha){
     if (!repo || !sha || strlen(sha) < 3) return NULL;
 
     char prefix[3] = {sha[0], sha[1], '\0'};
@@ -326,4 +326,37 @@ bool cat_file(Repository *repo, const char *name, object_type type){
     fwrite(obj->data, 1, obj->size, stdout);
     object_destroy(obj);
     return true;
+}
+
+/**
+ * commit_parse - parses a Git commit Object into a KVLM structure
+ * 
+ * A convenience wrapper around kvlm_parse that validates the Object type 
+ * and directly passes its internal data buffer for parsing.
+ * 
+ * @param obj  Pointer to the Git Object (must be of type GIT_COMMIT).
+ *
+ * @return Pointer to the constructed KVLM struct, or NULL on invalid input.
+ **/
+KVLM *commit_parse(Object *obj){
+    if (!obj || obj->type != GIT_COMMIT) return NULL;
+    return kvlm_parse(obj->data, obj->size);
+}
+
+/**
+ * commit_from_kvlm - serializes a KVLM struct into a standard Git Object
+ * 
+ * Takes an existing KVLM structure, serializes it to raw Git format, and 
+ * wraps the resulting payload in a newly allocated Git Object marked as a commit.
+ * 
+ * @param kvlm  Pointer to the KVLM structure containing commit data.
+ *
+ * @return Pointer to the newly constructed Git Object.
+ **/
+Object *commit_from_kvlm(KVLM *kvlm){
+    size_t len;
+    char *data = kvlm_serialize(kvlm, &len);
+    Object *obj = object_new(GIT_COMMIT, data, len);
+    free(data);
+    return obj;
 }

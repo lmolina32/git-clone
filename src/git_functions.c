@@ -3,6 +3,7 @@
 #include "git_functions.h"
 #include "repository.h"
 #include "objects.h"
+#include "kvlm.h"
 #include "utils.h"
 
 #include <stdio.h>
@@ -10,6 +11,28 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+/**
+ * usage - prints the options for the program
+ * 
+ * @param program The program name
+ **/
+void usage(const char *program) {
+    fprintf(stderr, "Usage: %s <command> [<args>]\n\n", program);
+
+    fprintf(stderr, "Repository:\n");
+    fprintf(stderr, "   init [directory]                 Create an empty Git repository.\n");
+
+    fprintf(stderr, "\nObjects (plumbing):\n");
+    fprintf(stderr, "   hash-object [-w] [-t TYPE] FILE  Compute object hash, optionally write it to the store.\n");
+    fprintf(stderr, "   cat-file TYPE OBJECT              Print the contents of a repository object.\n");
+
+    fprintf(stderr, "\nHistory:\n");
+    fprintf(stderr, "   log [commit]                     Display commit history as Graphviz output.\n");
+
+    fprintf(stderr, "\nGeneral Options:\n");
+    fprintf(stderr, "   -h or --help                       Print this help message.\n");
+}
 
 /**
  * cmd_init - Initialize a new repository.
@@ -135,4 +158,50 @@ bool cmd_hash_object(int arg_count, char *args[]){
     printf("%s\n", sha1);
     free(sha1);
     return true;
+}
+
+/**
+ * cmd_log - executes the 'log' command to generate a commit history graph
+ * 
+ * Resolves the starting commit (defaulting to "HEAD" if no arguments are provided) 
+ * and outputs the commit history in Graphviz DOT format to standard output. 
+ * Initializes a StringSet to keep track of visited commits in order to handle 
+ * merge commits and prevent infinite loops during traversal.
+ * 
+ * @param arg_count  The number of arguments passed to the log command.
+ * @param args       Array of string arguments (expects at most one: the commit/ref).
+ *
+ * @return true if the graph was successfully generated, false on invalid usage, 
+ *         if the repository cannot be found, or if the commit fails to resolve.
+ **/
+bool cmd_log(int arg_count, char *args[]){
+    if (arg_count > 1){
+        fprintf(stderr, "./git_clone log [<commit>]\n");
+        return false;
+    }
+    char *commit = arg_count ? args[0] : "HEAD";
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    char *sha = object_find(repo, commit, GIT_COMMIT, true);
+    if (!sha) {
+        fprintf(stderr, "log: cannot resolve '%s'\n", commit);
+        repo_destroy(repo);
+        return false;
+    }
+
+    printf("digraph gitlog{\n");
+    printf("  node[shape=rect]\n");
+
+    StringSet set;
+    string_set_init(&set);
+    bool ok = log_graphviz(repo, sha, &set);
+    string_set_destroy(&set);
+
+    printf("}\n");
+
+    free(sha);
+    repo_destroy(repo);
+    return ok;
 }

@@ -231,3 +231,100 @@ bool remove_directory(const char *path){
 
     return status;
 }
+
+/**
+ * string_set_init - initializes a new StringSet
+ * 
+ * @param set  Pointer to the uninitialized StringSet structure.
+ **/
+void string_set_init(StringSet *set){
+    set->items = NULL;
+    set->count = 0;
+    set->capacity = 0;
+}
+
+/**
+ * string_set_contains - checks if a string exists within the StringSet
+ * 
+ * @param set  Pointer to the initialized StringSet.
+ * @param str  The null-terminated string to search for.
+ *
+ * @return true if the string is found within the set, false otherwise.
+ **/
+bool string_set_contains(StringSet *set, const char *s){
+    for (size_t i = 0; i < set->count; i++){
+        if (streq(set->items[i], s)){
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * string_set_add - adds a string to the StringSet
+ * 
+ * @param set  Pointer to the initialized StringSet.
+ * @param str  The null-terminated string to add to the set.
+ *
+ * @return true if the string was added, false if it was already in the set 
+ *         or on memory allocation failure.
+ **/
+void string_set_add(StringSet *set, const char *s){
+    if (set->count == set->capacity){
+        set->capacity = set->capacity ? set->capacity * 2 : 8;
+        set->items = safe_realloc(set->items, set->capacity);
+    }
+    set->items[set->count++] = safe_strdup(s);
+}
+
+/**
+ * string_set_destroy - frees memory associated with a StringSet
+ * 
+ * @param set  Pointer to the StringSet structure to be destroyed.
+ **/
+void string_set_destroy(StringSet *set){
+    for (size_t i = 0; i < set->count; i++){
+        free(set->items[i]);
+    }
+    free(set->items);
+}
+
+/**
+ * dynbuf_init - initializes a new dynamic buffer
+ * 
+ * @param db  Pointer to the uninitialized DynBuf structure.
+ **/
+void dynbuf_init(DynBuf *db){
+    db->cap = 256;
+    db->len = 0;
+    db->data = safe_calloc(1, db->cap);
+}
+
+/**
+ * dynbuf_append - appends raw data to a dynamic buffer
+ * 
+ * @param db    Pointer to the initialized DynBuf structure.
+ * @param data  Pointer to the raw string or byte data to append.
+ * @param len   The number of bytes from 'data' to append.
+ **/
+void dynbuf_append(DynBuf *db, const void *ptr, size_t n){
+    if (db->len + n > db->cap){
+        while (db->len + n > db->cap){
+            db->cap = db->cap ? db->cap * 2: 256;
+        }
+        db->data = safe_realloc(db->data, db->cap);
+    }
+    memcpy(db->data + db->len, ptr, n);
+    db->len += n;
+}
+
+/**
+ * dynbuf_destroy - frees memory associated with a dynamic buffer
+ * 
+ * @param db  Pointer to the DynBuf structure to be destroyed.
+ **/
+void dynbuf_destroy(DynBuf *db){
+    free(db->data);
+    db->data = NULL;
+    db->len = db->cap = 0;
+}
