@@ -185,8 +185,8 @@ static int entry_cmp(const void *a, const void *b){
     const TreeLeaf *ea = (const TreeLeaf *)a;
     const TreeLeaf *eb = (const TreeLeaf *)b;
 
-    bool a_is_tree = (ea->mode[0] == '4');
-    bool b_is_tree = (eb->mode[0] == '4');
+    bool a_is_tree = (ea->mode[1] == '4');
+    bool b_is_tree = (eb->mode[1] == '4');
 
     char *ka = safe_malloc(strlen(ea->path) + 2, 1);
     char *kb = safe_malloc(strlen(eb->path) + 2, 1);
