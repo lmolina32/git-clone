@@ -272,7 +272,7 @@ bool string_set_contains(StringSet *set, const char *s){
 void string_set_add(StringSet *set, const char *s){
     if (set->count == set->capacity){
         set->capacity = set->capacity ? set->capacity * 2 : 8;
-        set->items = safe_realloc(set->items, set->capacity);
+        set->items = safe_realloc(set->items, set->capacity * sizeof(char *));
     }
     set->items[set->count++] = safe_strdup(s);
 }
