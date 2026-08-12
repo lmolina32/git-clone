@@ -105,7 +105,7 @@ const char *tree_entry_type(const char *mode){
 static const unsigned char *parse_one(const unsigned char *raw, size_t len, size_t start, Tree *tree){
     size_t x = start;
     while (x < len && raw[x] != ' '){ x++; }
-    if (x > len) return NULL;
+    if (x >= len) return NULL;
 
     size_t mode_len = x - start;
     if (mode_len != 5 && mode_len !=6) return NULL;
@@ -115,9 +115,9 @@ static const unsigned char *parse_one(const unsigned char *raw, size_t len, size
 
     size_t y = x + 1;
     while (y < len && raw[y] != '\x00'){ y++; };
-    if (y > len) return NULL;
+    if (y >= len) return NULL;
     
-    size_t path_len = y - x;
+    size_t path_len = y - (x + 1);
     char *path = safe_calloc(path_len + 1, 1);
     memcpy(path, raw + x + 1, path_len);
 
@@ -128,7 +128,7 @@ static const unsigned char *parse_one(const unsigned char *raw, size_t len, size
 
     char sha[41] = {0};
     for (int i = 0; i < 20; i++){
-        snprintf(sha + 1 * 2, 3, "%02x", raw[ y + 1 + i]);
+        snprintf(sha + i * 2, 3, "%02x", raw[ y + 1 + i]);
     }
     tree_add_entry(tree, mode, path, sha);
     free(path);
@@ -149,15 +149,17 @@ static const unsigned char *parse_one(const unsigned char *raw, size_t len, size
  **/
 Tree *tree_parse(const char *raw, size_t len){
     Tree *t = tree_new();
-    const unsigned char *curr= (const unsigned char *)raw;
-    const unsigned char *end = (const unsigned char *)raw + len;
-    while (curr < end){
-        curr = parse_one(curr, len, (size_t)(curr - (const unsigned char *)raw), t);
-        if (!curr){
+    const unsigned char *base= (const unsigned char *)raw;
+    size_t pos = 0;
+
+    while (pos < len){
+        const unsigned char *next = parse_one(base, len, pos, t);
+        if (!next){
             tree_destroy(t);
             fprintf(stderr, "tree_parse: malformed tree data\n");
             return NULL;
         }
+        pos = (size_t)(next - base);
     }
     return t;
 }
