@@ -11,6 +11,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 /**
  * usage - prints the options for the program
@@ -29,6 +30,8 @@ void usage(const char *program) {
 
     fprintf(stderr, "\nHistory:\n");
     fprintf(stderr, "   log [commit]                     Display commit history as Graphviz output.\n");
+    fprintf(stderr, "   ls-tree [-r] TREE                Pretty-print a tree object.\n");
+    fprintf(stderr, "   checkout COMMIT PATH             Checkout a commit into an empty directory.\n");
 
     fprintf(stderr, "\nGeneral Options:\n");
     fprintf(stderr, "   -h or --help                       Print this help message.\n");
@@ -202,6 +205,136 @@ bool cmd_log(int arg_count, char *args[]){
     printf("}\n");
 
     free(sha);
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_ls_tree - handles the execution of the "ls-tree" command
+ * 
+ * Parses command line arguments to determine if the traversal should be 
+ * recursive (-r) and identifies the target tree reference. Locates the 
+ * repository and delegates to the core ls_tree() function to print the contents.
+ * 
+ * @param arg_count The number of arguments passed to the command.
+ * @param args      Array of string arguments (e.g., ["-r", "HEAD"]).
+ * 
+ * @return True on successful execution; false on invalid usage, missing repo,
+ *         or if tree traversal fails.
+ **/
+bool cmd_ls_tree(int arg_count, char *args[]){
+    bool recursive = false;
+    char *ref= NULL;
+
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "-r")){
+            recursive = true;
+        } else {
+            ref = args[i];
+        }
+    }
+
+    if (!ref){
+        fprintf(stderr, "usage: ./git_clone ls-tree [r] <TREE>\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+    bool ok = ls_tree(repo, ref, recursive, "");
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_checkout - handles the execution of the "checkout" command
+ * 
+ * Resolves the provided reference (commit or tree), verifies the target 
+ * directory is safe to use (empty or non-existent), creates it if necessary, 
+ * and populates the filesystem with the tree's contents. 
+ * 
+ * @param arg_count The number of arguments passed to the command.
+ * @param args      Array of string arguments: commit/tree ref, and destination path.
+ * 
+ * @return True if the checkout completes successfully; false on invalid arguments,
+ *         missing objects, unsafe destination, or filesystem errors.
+ **/
+bool cmd_checkout(int arg_count, char *args[]){
+    if (arg_count != 2){
+        fprintf(stderr, "usage: git checkout <commit> <path>\n");
+        return false;
+    } 
+
+    const char *commit_ref = args[0];
+    const char *dest_path = args[1];
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    char *sha = object_find(repo, commit_ref, GIT_COMMIT, true);
+    Object *obj = sha ? object_read(repo, sha) : NULL;
+    free(sha);
+
+    if (!obj){
+        fprintf(stderr, "checkout: cannot resolve %s\n", commit_ref);
+        repo_destroy(repo);
+        return false;
+    }
+
+    /* if commit follow to its tree */
+    if (obj->type == GIT_COMMIT){
+        KVLM *kvlm = commit_parse(obj);
+        const char *tree_sha = kvlm_get(kvlm, "tree");
+        if (!tree_sha){
+            fprintf(stderr, "checkout: commit has no tree\n");
+            kvlm_destroy(kvlm);
+            object_destroy(obj);
+            repo_destroy(repo);
+            return false;
+        }
+        Object *tree_obj = object_read(repo, tree_sha);
+        kvlm_destroy(kvlm);
+        object_destroy(obj);
+        obj = tree_obj;
+    }
+
+    if (!obj || obj->type != GIT_TREE) {
+        fprintf(stderr, "checkout: %s is not a tree or commit\n", commit_ref);
+        object_destroy(obj);
+        repo_destroy(repo);
+        return false;
+    }
+
+    /* verify destination is an empty directory, or doesn't exist yet */
+    struct stat sb;
+    if (stat(dest_path, &sb) == 0){
+        if (!S_ISDIR(sb.st_mode)){
+            fprintf(stderr, "checkoout: not a directory: %s\n", dest_path);
+            object_destroy(obj);
+            repo_destroy(repo);
+            return false;
+        }
+
+        if (!is_directory_empty(dest_path)){
+            fprintf(stderr, "checkout: not empty: %s\n", dest_path);
+            object_destroy(obj);
+            repo_destroy(repo);
+            return false;
+        }
+    } else if (!mkdir_p(dest_path, 0755)){
+        fprintf(stderr, "checkout: cannot create directory %s\n", dest_path);
+        object_destroy(obj);
+        repo_destroy(repo);
+        return false;
+    }
+
+    char *real_dst = realpath(dest_path, NULL);
+    Tree *tree = object_to_tree(obj);
+    bool ok = tree && tree_checkout(repo, tree, real_dst ? real_dst : dest_path);
+
+    free(real_dst);
+    tree_destroy(tree);
+    object_destroy(obj);
     repo_destroy(repo);
     return ok;
 }
