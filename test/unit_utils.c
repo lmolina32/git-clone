@@ -281,7 +281,7 @@ int test_07_string_set_growth_reallocation() {
 
     // Add enough items to force the capacity to double (8 -> 16)
     for (int i = 0; i < 15; i++) {
-        char buffer[16];
+        char buffer[16] = {0};
         snprintf(buffer, sizeof(buffer), "item_%d", i);
         string_set_add(&set, buffer);
     }
