@@ -94,9 +94,9 @@ int test_05_tree_parse_serialize_roundtrip() {
     printf("Running tree_parse/tree_serialize round-trip test...\n");
     Tree *t = tree_new();
 
-    tree_add_entry(t, "100644", ".gitignore", "894a44cc066a027465cd26d634948d56d13af9a");
-    tree_add_entry(t, "040000", "src",         "6d208e47659a2a10f5f8640e0155d9276a2130a");
-    tree_add_entry(t, "100755", "run.sh",       "aafc00f9f92091f141982363e0a16f612819e19");
+    tree_add_entry(t, "100644", ".gitignore", "894a44cc066a027465cd26d634948d56d13af9a0");
+    tree_add_entry(t, "040000", "src",         "6d208e47659a2a10f5f8640e0155d9276a2130a0");
+    tree_add_entry(t, "100755", "run.sh",       "aafc00f9f92091f141982363e0a16f612819e190");
 
     size_t len;
     char *raw = tree_serialize(t, &len);
