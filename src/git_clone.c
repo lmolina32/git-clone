@@ -33,6 +33,12 @@ int main(int argc, char *argv[]){
         status = cmd_ls_tree(argc - argind, &argv[argind]);
     } else if (streq(command, "checkout")){
         status = cmd_checkout(argc - argind, &argv[argind]);
+    } else if (streq(command, "show-ref")){
+        status = cmd_show_ref(argc - argind, &argv[argind]);
+    } else if (streq(command, "tag")){
+        status = cmd_tag(argc - argind, &argv[argind]);
+    } else if (streq(command, "rev-parse")){
+        status = cmd_rev_parse(argc - argind, &argv[argind]);
     } else {
         fprintf(stderr, "%s: '%s' is not a valid command.\n\n", argv[0], command);
         usage(argv[0]);

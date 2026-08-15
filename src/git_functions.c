@@ -4,6 +4,7 @@
 #include "repository.h"
 #include "objects.h"
 #include "kvlm.h"
+#include "ref.h"
 #include "utils.h"
 
 #include <stdio.h>
@@ -22,19 +23,24 @@ void usage(const char *program) {
     fprintf(stderr, "Usage: %s <command> [<args>]\n\n", program);
 
     fprintf(stderr, "Repository:\n");
-    fprintf(stderr, "   init [directory]                 Create an empty Git repository.\n");
+    fprintf(stderr, "   init [directory]                    Create an empty Git repository.\n");
 
     fprintf(stderr, "\nObjects (plumbing):\n");
-    fprintf(stderr, "   hash-object [-w] [-t TYPE] FILE  Compute object hash, optionally write it to the store.\n");
-    fprintf(stderr, "   cat-file TYPE OBJECT              Print the contents of a repository object.\n");
+    fprintf(stderr, "   hash-object [-w] [-t TYPE] FILE     Compute object hash, optionally write it to the store.\n");
+    fprintf(stderr, "   cat-file TYPE OBJECT                Print the contents of a repository object.\n");
 
     fprintf(stderr, "\nHistory:\n");
-    fprintf(stderr, "   log [commit]                     Display commit history as Graphviz output.\n");
-    fprintf(stderr, "   ls-tree [-r] TREE                Pretty-print a tree object.\n");
-    fprintf(stderr, "   checkout COMMIT PATH             Checkout a commit into an empty directory.\n");
+    fprintf(stderr, "   log [commit]                        Display commit history as Graphviz output.\n");
+    fprintf(stderr, "   ls-tree [-r] TREE                   Pretty-print a tree object.\n");
+    fprintf(stderr, "   checkout COMMIT PATH                Checkout a commit into an empty directory.\n");
+
+    fprintf(stderr, "\nRefs, tags, and revisions:\n");
+    fprintf(stderr, "   show-ref                            List all references\n");
+    fprintf(stderr, "   tag [-a] [name] [object]            List tags, or create a new one.\n");
+    fprintf(stderr, "   rev-parse [--git-type TYPE] NAME    Resolve a name to an object hash\n");
 
     fprintf(stderr, "\nGeneral Options:\n");
-    fprintf(stderr, "   -h or --help                       Print this help message.\n");
+    fprintf(stderr, "   -h or --help                        Print this help message.\n");
 }
 
 /**
@@ -337,4 +343,132 @@ bool cmd_checkout(int arg_count, char *args[]){
     object_destroy(obj);
     repo_destroy(repo);
     return ok;
+}
+
+/**
+ * cmd_show_ref - handles the 'show-ref' command to list repository references
+ * 
+ * Validates command arguments, locates the active Git repository, recursively
+ * reads all stored references, and outputs them in standard format to stdout.
+ * 
+ * @param arg_count  Number of command-line arguments provided.
+ * @param args       Array of command-line argument strings.
+ * 
+ * @return true if references were successfully listed, false on invalid usage
+ *         or if repository location fails.
+ **/
+bool cmd_show_ref(int arg_count, char *args[]){
+    (void)arg_count; (void)args;
+    if (arg_count != 0){
+        fprintf(stderr, "usage: ./git_clone show-ref\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (repo){
+        RefNode *refs = ref_list(repo, NULL);
+        repo_destroy(repo);
+        if (refs){
+            show_ref(refs, true, "");
+            ref_node_destroy(refs);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * cmd_tag - handles the 'tag' command to create or display tag references
+ * 
+ * Parses CLI arguments to create either a lightweight or annotated (`-a`) tag 
+ * targeting a specified object (defaulting to "HEAD"), or lists existing tags
+ * when no tag name is supplied.
+ * 
+ * @param arg_count  Number of command-line arguments provided.
+ * @param args       Array of command-line argument strings.
+ * 
+ * @return true if tag creation or listing succeeded, false on missing target names,
+ *         invalid options, or repository initialization failure.
+ **/
+bool cmd_tag(int arg_count, char *args[]){
+    bool create_tag_object = false;
+    char *name = NULL;
+    char *object = "HEAD";
+    int pos = 0;
+
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "-a")){ create_tag_object = true; }
+        else if (pos == 0){ name = args[i]; pos++; }
+        else if (pos == 1){ object = args[i]; pos++; }
+    }
+
+    if (!name){
+        fprintf(stderr, "usage: ./git_clone tag [-a] <name> [<object>]\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    bool ok = false;
+    if (name){
+        ok = tag_create(repo, name, object, create_tag_object);
+    } else {
+        RefNode *refs = ref_list(repo, NULL);
+        if (refs){
+            for (size_t i = 0; i < refs->child_count; i++){
+                if (streq(refs->children[i].name, "tags")){
+                    show_ref(&refs->children[i], false, "");
+                    ok = true;
+                }
+            }
+            ref_node_destroy(refs);
+        }
+    }
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_rev_parse - handles the 'rev-parse' command to resolve object names to SHAs
+ * 
+ * Resolves a given reference, branch name, tag, or short SHA string to its full 
+ * 40-character hexadecimal SHA-1 hash and prints it to stdout. Accepts an optional 
+ * `--git-type` flag to filter resolution by target object type.
+ * 
+ * @param arg_count  Number of command-line arguments provided.
+ * @param args       Array of command-line argument strings.
+ * 
+ * @return true if parsing and resolution executed successfully, false on invalid
+ *         arguments, bad type specifications, or missing repository context.
+ **/
+bool cmd_rev_parse(int arg_count, char *args[]){
+    object_type type = GIT_ANY_TYPE;
+    char *name = NULL;
+    
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "--git-type")){
+            if (i + 1 >= arg_count || !object_type_from_name(args[++i], &type)){
+                fprintf(stderr, "rev-parse: bad --git-type argument\n");
+                return false;
+            }
+        } else {
+            name = args[i];
+        }
+    }
+
+    if (!name){
+        fprintf(stderr, "usage: git_clone rev-parse [--git-type TYPE] <name>\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    char *sha = object_find(repo, name, type, true);
+    repo_destroy(repo);
+
+    printf("%s", sha ? sha : "None");
+    free(sha);
+    return true;
 }
