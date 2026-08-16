@@ -3,7 +3,14 @@
 CC=			 gcc-16
 LD=			 gcc-16
 CFLAGS=		 -Wall -Wextra -g -Og -std=gnu23 
-LDFLAGS=	 -Lbuild -lz
+LDFLAGS=	 -Lbuild -lz -lm
+
+# Sanitizer Flags
+
+ifeq ($(SANITIZE),1)
+    CFLAGS  += -fsanitize=address,undefined -fno-omit-frame-pointer
+    LDFLAGS += -fsanitize=address,undefined
+endif
 
 # Files 
 
@@ -52,9 +59,9 @@ bin/unit_%: build/unit_%.o $(GIT_OBJECTS) | bin
 
 test: $(GIT_PROGRAM) $(GIT_UNIT_TESTS)
 	@chmod +x scripts/*.sh
-	@EXIT=0; for test in scripts/run_*_unit.sh; do 	\
-	    $$test;					\
-	    EXIT=$$(($$EXIT + $$?));			\
+	@EXIT=0; for test in $(GIT_UNIT_TESTS); do \
+	    SANITIZE=$(SANITIZE) ./scripts/run_unit.sh $$test; \
+	    EXIT=$$(($$EXIT + $$?)); \
 	done; exit $$EXIT
 
 clean:
