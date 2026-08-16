@@ -205,9 +205,7 @@ void show_ref(RefNode *node, bool with_hash, const char *prefix){
  * @return True if the reference file was successfully written, false otherwise.
  **/
 bool ref_create(Repository *repo, const char *ref_name, const char *sha){
-    char *ref_path = path_join("refs", ref_name, NULL);
-    char *file_path = repo_file(repo, false, ref_name, NULL);
-    free(ref_path);
+    char *file_path = repo_file(repo, true, ref_name, NULL);
     if (!file_path) return false;
 
     FILE *f = safe_fopen(file_path, "w");

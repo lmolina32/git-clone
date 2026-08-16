@@ -292,6 +292,15 @@ static void object_resolve(Repository *repo, const char *name, StringSet *candid
         return;
     }
 
+    if (strncmp(name, "refs/", 5) == 0){
+        char *sha = ref_resolve(repo, name);
+        if (sha){
+            string_set_add(candidates, sha);
+            free(sha);
+        }
+        return;
+    }
+
     if (is_hex_string(name)){
         char lower[41] = {0};
         size_t len = strlen(name);
@@ -307,7 +316,7 @@ static void object_resolve(Repository *repo, const char *name, StringSet *candid
             if (d){
                 for (struct dirent *e = readdir(d); e; e = readdir(d)){
                     if (streq(e->d_name, ".") || streq(e->d_name, "..")){ continue; }
-                    if (strncmp(rem, e->d_name, rem_len)){
+                    if (strneq(rem, e->d_name, rem_len)){
                         char full[MAX_PATH];
                         snprintf(full, sizeof(full), "%s%s", prefix, e->d_name);
                         string_set_add(candidates, full);
@@ -325,7 +334,7 @@ static void object_resolve(Repository *repo, const char *name, StringSet *candid
         if (path){
             char *sha = ref_resolve(repo, path);
             if (sha){
-                string_set_add(candidates, path);
+                string_set_add(candidates, sha);
                 free(sha);
             }
             free(path);
@@ -373,7 +382,7 @@ char *object_find(Repository *repo, const char *name, object_type type, bool fol
     if (type == GIT_ANY_TYPE) return sha;
 
     for (;;){
-        Object *obj = object_read(repo, shas.items[0]);
+        Object *obj = object_read(repo, sha);
         if (!obj) { free(sha); return NULL; }
 
         if (obj->type == type){ object_destroy(obj); return sha; }
@@ -390,11 +399,8 @@ char *object_find(Repository *repo, const char *name, object_type type, bool fol
             const char *inner = kvlm_get(kvlm, "tree");
             if (inner) next = safe_strdup(inner);
             kvlm_destroy(kvlm);
-        } else {
-            object_destroy(obj);
-            free(sha);
-            return NULL;
-        }
+        } 
+        
         object_destroy(obj);
         free(sha);
         if (!next) return NULL;

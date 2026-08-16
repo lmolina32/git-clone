@@ -139,15 +139,27 @@ int test_04_object_hash_fd() {
 int test_05_object_find_and_cat() {
     printf("Running object find and cat test...\n");
 
-    Repository repo = {0};
+    char repo_path[MAX_PATH];
+    Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
 
-    char *found = object_find(&repo, "main", GIT_COMMIT, true);
+    // Create a blob and a branch "main" pointing to it
+    Object *blob = object_new(GIT_BLOB, "test content", 12);
+    char *blob_sha = object_write(blob, repo);
+    object_destroy(blob);
+    ref_create(repo, "refs/heads/main", blob_sha);
+
+    // Resolve "main" -> should return the blob SHA
+    char *found = object_find(repo, "main", GIT_ANY_TYPE, false);
     assert(found != NULL);
-    assert(strcmp(found, "main") == 0);
+    assert(strcmp(found, blob_sha) == 0);
     free(found);
 
-    bool res = cat_file(&repo, "0000000000000000000000000000000000000000", GIT_BLOB);
+    // cat_file on a non‑existent object should return false
+    bool res = cat_file(repo, "0000000000000000000000000000000000000000", GIT_BLOB);
     assert(res == false);
+
+    free(blob_sha);
+    destroy_temp_repo(repo);
 
     printf("Test 5 Passed: Object find pass-through and cat_file fallback work\n");
     return EXIT_SUCCESS;
@@ -331,7 +343,7 @@ int test12_object_find_refs_and_head() {
     // 2. Resolve short branch reference "master"
     char *found_ref = object_find(repo, "master", GIT_ANY_TYPE, false);
     assert(found_ref != NULL);
-    assert(strcmp(found_ref, "refs/heads/master") == 0);
+    assert(strcmp(found_ref, blob_sha) == 0);
     free(found_ref);
 
     // 3. Non-existent reference returns NULL
@@ -381,11 +393,18 @@ int test14_object_find_type_following() {
     char repo_path[MAX_PATH];
     Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
 
-    const char *dummy_tree_sha = "0000000000000000000000000000000000000000";
+    // 1. Create a real tree object so that follow = true can read it.
+    Tree *tree = tree_new();
+    tree_add_entry(tree, "100644", "hello.txt",
+                   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    Object *tree_obj = tree_to_object(tree);
+    char *tree_sha = object_write(tree_obj, repo);
+    tree_destroy(tree);
+    object_destroy(tree_obj);
 
-    // 1. Create a commit pointing to tree_sha
+    // 2. Create a commit pointing to that tree.
     KVLM *commit_kvlm = kvlm_new();
-    kvlm_set(commit_kvlm, "tree", dummy_tree_sha);
+    kvlm_set(commit_kvlm, "tree", tree_sha);
     kvlm_set(commit_kvlm, "author", "Test User <test@example.com>");
     kvlm_set(commit_kvlm, NULL, "Initial commit\n");
 
@@ -397,14 +416,14 @@ int test14_object_find_type_following() {
     // Follow commit -> tree lookup
     char *found_tree = object_find(repo, commit_sha, GIT_TREE, true);
     assert(found_tree != NULL);
-    assert(strcmp(found_tree, dummy_tree_sha) == 0);
+    assert(strcmp(found_tree, tree_sha) == 0);
     free(found_tree);
 
     // Without following (follow = false), commit isn't a tree -> returns NULL
     char *no_tree = object_find(repo, commit_sha, GIT_TREE, false);
     assert(no_tree == NULL);
 
-    // 2. Create annotated tag object pointing to commit_sha
+    // 3. Create annotated tag object pointing to commit_sha
     KVLM *tag_kvlm = kvlm_new();
     kvlm_set(tag_kvlm, "object", commit_sha);
     kvlm_set(tag_kvlm, "type", "commit");
@@ -424,7 +443,9 @@ int test14_object_find_type_following() {
 
     free(commit_sha);
     free(tag_sha);
+    free(tree_sha);
     destroy_temp_repo(repo);
+
     printf("Test 14 Passed: object_find correctly follows tags and commits to target types\n");
     return EXIT_SUCCESS;
 }
