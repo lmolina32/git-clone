@@ -23,9 +23,9 @@ typedef enum {
 } object_type;
 
 typedef struct {
-    object_type type;
-    char *data;
-    size_t size;
+    object_type  type;
+    char        *data;
+    size_t       size;
 } Object;
 
 /* Functions */

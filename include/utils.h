@@ -65,16 +65,16 @@ static inline void *safe_strdup(const char *s){
 /* Structures */
 
 typedef struct {
-    char **items;
-    size_t count;
-    size_t capacity; 
+    char    **items;
+    size_t    count;
+    size_t    capacity; 
 } StringSet;
 
 
 typedef struct {
-    char *data;
-    size_t len;
-    size_t cap;
+    char    *data;
+    size_t   len;
+    size_t   cap;
 } DynBuf;
 
 /* Functions */
