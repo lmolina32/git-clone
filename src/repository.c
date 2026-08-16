@@ -144,6 +144,12 @@ Repository *repo_init(const char *path){
     fclose(f);
     free(s);
 
+    s = repo_file(repo, false, "config", NULL);
+    if (s) {
+        repo->config = repo_config_create(s);
+        free(s);
+    }
+
     return repo;
 
 fail:

@@ -14,5 +14,8 @@ bool cmd_hash_object(int arg_count, char *args[]);
 bool cmd_log(int arg_count, char *args[]);
 bool cmd_ls_tree(int arg_count, char *args[]);
 bool cmd_checkout(int arg_count, char *args[]);
+bool cmd_show_ref(int arg_count, char *args[]);
+bool cmd_tag(int arg_count, char *args[]);
+bool cmd_rev_parse(int arg_count, char *args[]);
 
 #endif

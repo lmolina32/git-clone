@@ -4,10 +4,14 @@
 #include "utils.h"
 #include "zlib.h"
 #include "sha1.h"
+#include "kvlm.h"
+#include "ref.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <sys/stat.h>
 
 static const char *type_names[] = {"blob", "commit", "tag", "tree"};
@@ -249,6 +253,96 @@ char *object_write(Object *obj, Repository *repo){
 }
 
 /**
+ * is_hex_string - checks if a string represents a valid partial or full hex SHA hash
+ * 
+ * @param s Input string to test.
+ * 
+ * @return True if the string is valid hex between 4 and 40 length, false otherwise.
+ **/
+static bool is_hex_string(const char *s){
+    size_t len = strlen(s);
+    if (len < 4 || len > 40) return false;
+    for (size_t i = 0; i < len; i++){
+        if (!isxdigit((unsigned char)s[i])){ return false; }
+    }
+    return true;
+}
+
+/**
+ * object_resolve - populates candidate SHA hashes matching a reference or partial SHA string
+ * 
+ * Examines HEAD, hex string object prefixes in `.git/objects`, and directory branch/tag
+ * references under `refs/`, adding all matching candidates to the provided StringSet.
+ * 
+ * @param repo       Pointer to the Repository context.
+ * @param name       Reference name, HEAD, tag, or partial/full hexadecimal SHA string.
+ * @param candidates StringSet instance where matched reference paths or SHAs are gathered.
+ * 
+ * @return Void.
+ **/
+static void object_resolve(Repository *repo, const char *name, StringSet *candidates){
+    if (!name || !*name){ return; }
+
+    if (streq(name, "HEAD")){
+        char *sha = ref_resolve(repo, "HEAD");
+        if (sha){
+            string_set_add(candidates, sha);
+            free(sha);
+        }
+        return;
+    }
+
+    if (strncmp(name, "refs/", 5) == 0){
+        char *sha = ref_resolve(repo, name);
+        if (sha){
+            string_set_add(candidates, sha);
+            free(sha);
+        }
+        return;
+    }
+
+    if (is_hex_string(name)){
+        char lower[41] = {0};
+        size_t len = strlen(name);
+        for (size_t i = 0 ; i < len; i++){
+            lower[i] = tolower((unsigned char)name[i]);
+        }
+        char prefix[3] = {lower[0], lower[1], '\0'};
+        char *path = repo_dir(repo, false, "objects", prefix, NULL);
+        if (path){
+            const char *rem = lower + 2;
+            size_t rem_len = strlen(rem);
+            DIR *d = opendir(path);
+            if (d){
+                for (struct dirent *e = readdir(d); e; e = readdir(d)){
+                    if (streq(e->d_name, ".") || streq(e->d_name, "..")){ continue; }
+                    if (strneq(rem, e->d_name, rem_len)){
+                        char full[MAX_PATH];
+                        snprintf(full, sizeof(full), "%s%s", prefix, e->d_name);
+                        string_set_add(candidates, full);
+                    }
+                }
+                closedir(d);
+            }
+            free(path);
+        }
+    }
+
+    const char *dirs[] = { "refs/tags", "refs/heads", "refs/remotes" };
+    for (int i = 0; i < 3; i++){
+        char *path = path_join(dirs[i], name, NULL);
+        if (path){
+            char *sha = ref_resolve(repo, path);
+            if (sha){
+                string_set_add(candidates, sha);
+                free(sha);
+            }
+            free(path);
+        }
+    }
+}
+
+/**
  * object_find - resolves an object name reference to its matching SHA-1 string
  * 
  * Looks up an object identifier or reference within a repository and resolves it 
@@ -263,8 +357,55 @@ char *object_write(Object *obj, Repository *repo){
  *         or NULL if not found.
  **/
 char *object_find(Repository *repo, const char *name, object_type type, bool follow){
-    (void)repo; (void)(type); (void)follow;
-    return safe_strdup(name);
+    StringSet shas;
+    string_set_init(&shas);
+    object_resolve(repo, name, &shas);
+
+    if (shas.count == 0){
+        fprintf(stderr, "object_find: no such reference '%s'\n", name);
+        string_set_destroy(&shas);
+        return NULL;
+    }
+
+    if (shas.count > 1){
+        fprintf(stderr, "Ambiguous reference %s, Candidates are:\n", name);
+        for (size_t i = 0; i < shas.count; i++){
+            fprintf(stderr, " - %s\n", shas.items[i]);
+        }
+        string_set_destroy(&shas);
+        return NULL;
+    }
+
+    char *sha = safe_strdup(shas.items[0]);
+    string_set_destroy(&shas);
+
+    if (type == GIT_ANY_TYPE) return sha;
+
+    for (;;){
+        Object *obj = object_read(repo, sha);
+        if (!obj) { free(sha); return NULL; }
+
+        if (obj->type == type){ object_destroy(obj); return sha; }
+        if (!follow){ object_destroy(obj); free(sha); return NULL; }
+
+        char *next = NULL;
+        if (obj->type == GIT_TAG){
+            KVLM *kvlm = kvlm_parse(obj->data, obj->size);
+            const char *inner = kvlm_get(kvlm, "object");
+            if (inner) next = safe_strdup(inner);
+            kvlm_destroy(kvlm);
+        } else if (obj->type == GIT_COMMIT && type == GIT_TREE){
+            KVLM *kvlm = kvlm_parse(obj->data, obj->size);
+            const char *inner = kvlm_get(kvlm, "tree");
+            if (inner) next = safe_strdup(inner);
+            kvlm_destroy(kvlm);
+        } 
+        
+        object_destroy(obj);
+        free(sha);
+        if (!next) return NULL;
+        sha = next;
+    }
 }
 
 /**
@@ -354,11 +495,7 @@ KVLM *commit_parse(Object *obj){
  * @return Pointer to the newly constructed Git Object.
  **/
 Object *commit_from_kvlm(KVLM *kvlm){
-    size_t len;
-    char *data = kvlm_serialize(kvlm, &len);
-    Object *obj = object_new(GIT_COMMIT, data, len);
-    free(data);
-    return obj;
+    return object_from_kvlm(GIT_COMMIT, kvlm);
 }
 
 /**
@@ -392,6 +529,25 @@ Object *tree_to_object(Tree *tree){
     size_t len;
     char *data = tree_serialize(tree, &len);
     Object *obj = object_new(GIT_TREE, data, len);
+    free(data);
+    return obj;
+}
+
+/**
+ * object_from_kvlm - constructs a Git Object from a KVLM structure
+ * 
+ * Serializes the given KVLM structure to raw byte buffer representation 
+ * and wraps it inside a new Object structure assigned with the specified type.
+ * 
+ * @param type Object type enum to set for the new Object.
+ * @param kvlm Pointer to the KVLM structure to serialize.
+ * 
+ * @return Pointer to the newly allocated Object struct.
+ **/
+Object *object_from_kvlm(object_type type, KVLM *kvlm){
+    size_t len;
+    char *data = kvlm_serialize(kvlm, &len);
+    Object *obj = object_new(type, data, len);
     free(data);
     return obj;
 }

@@ -1,4 +1,5 @@
 #include "objects.h"
+#include "ref.h"
 #include "utils.h"
 
 #include <assert.h>
@@ -7,6 +8,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* Helpers */
+
+static Repository *create_temp_repo(char *out_path_buf, size_t buf_size) {
+    snprintf(out_path_buf, buf_size, "/tmp/test_git_obj_XXXXXX");
+    char *dir = mkdtemp(out_path_buf);
+    assert(dir != NULL);
+
+    Repository *repo = repo_init(dir);
+    assert(repo != NULL);
+    return repo;
+}
+
+static void destroy_temp_repo(Repository *repo) {
+    if (!repo) return;
+    char cmd[MAX_PATH * 2];
+    snprintf(cmd, sizeof(cmd), "rm -rf %s", repo->worktree);
+    (void)system(cmd);
+    repo_destroy(repo);
+}
+
+/* Tests */
 
 int test_00_type_conversions() {
     printf("Running object type conversion test...\n");
@@ -116,15 +139,27 @@ int test_04_object_hash_fd() {
 int test_05_object_find_and_cat() {
     printf("Running object find and cat test...\n");
 
-    Repository repo = {0};
+    char repo_path[MAX_PATH];
+    Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
 
-    char *found = object_find(&repo, "main", GIT_COMMIT, true);
+    // Create a blob and a branch "main" pointing to it
+    Object *blob = object_new(GIT_BLOB, "test content", 12);
+    char *blob_sha = object_write(blob, repo);
+    object_destroy(blob);
+    ref_create(repo, "refs/heads/main", blob_sha);
+
+    // Resolve "main" -> should return the blob SHA
+    char *found = object_find(repo, "main", GIT_ANY_TYPE, false);
     assert(found != NULL);
-    assert(strcmp(found, "main") == 0);
+    assert(strcmp(found, blob_sha) == 0);
     free(found);
 
-    bool res = cat_file(&repo, "0000000000000000000000000000000000000000", GIT_BLOB);
+    // cat_file on a non‑existent object should return false
+    bool res = cat_file(repo, "0000000000000000000000000000000000000000", GIT_BLOB);
     assert(res == false);
+
+    free(blob_sha);
+    destroy_temp_repo(repo);
 
     printf("Test 5 Passed: Object find pass-through and cat_file fallback work\n");
     return EXIT_SUCCESS;
@@ -285,6 +320,136 @@ int test_11_tree_to_object_valid() {
     return EXIT_SUCCESS;
 }
 
+int test12_object_find_refs_and_head() {
+    printf("Running test12_object_find_refs_and_head...\n");
+
+    char repo_path[MAX_PATH];
+    Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
+
+    // Create and write a blob object
+    Object *blob = object_new(GIT_BLOB, "hello world\n", 12);
+    char *blob_sha = object_write(blob, repo);
+    object_destroy(blob);
+
+    // Create branch master pointing to blob SHA
+    ref_create(repo, "refs/heads/master", blob_sha);
+
+    // 1. Resolve HEAD reference
+    char *found_head = object_find(repo, "HEAD", GIT_ANY_TYPE, false);
+    assert(found_head != NULL);
+    assert(strcmp(found_head, blob_sha) == 0);
+    free(found_head);
+
+    // 2. Resolve short branch reference "master"
+    char *found_ref = object_find(repo, "master", GIT_ANY_TYPE, false);
+    assert(found_ref != NULL);
+    assert(strcmp(found_ref, blob_sha) == 0);
+    free(found_ref);
+
+    // 3. Non-existent reference returns NULL
+    char *missing = object_find(repo, "nonexistent_branch", GIT_ANY_TYPE, false);
+    assert(missing == NULL);
+
+    free(blob_sha);
+    destroy_temp_repo(repo);
+    printf("Test 12 Passed: object_find resolves HEAD and branch reference names\n");
+    return EXIT_SUCCESS;
+}
+
+int test13_object_find_hex_prefix() {
+    printf("Running test13_object_find_hex_prefix...\n");
+
+    char repo_path[MAX_PATH];
+    Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
+
+    Object *blob = object_new(GIT_BLOB, "prefix test content", 19);
+    char *full_sha = object_write(blob, repo);
+    object_destroy(blob);
+
+    // 1. Full 40-character hexadecimal SHA string lookup
+    char *found_full = object_find(repo, full_sha, GIT_ANY_TYPE, false);
+    assert(found_full != NULL);
+    assert(strcmp(found_full, full_sha) == 0);
+    free(found_full);
+
+    // 2. Short prefix lookup (first 7 characters)
+    char prefix[8] = {0};
+    strncpy(prefix, full_sha, 7);
+
+    char *found_prefix = object_find(repo, prefix, GIT_ANY_TYPE, false);
+    assert(found_prefix != NULL);
+    assert(strcmp(found_prefix, full_sha) == 0);
+    free(found_prefix);
+
+    free(full_sha);
+    destroy_temp_repo(repo);
+    printf("Test 13 Passed: object_find resolves full and short hexadecimal SHA prefixes\n");
+    return EXIT_SUCCESS;
+}
+
+int test14_object_find_type_following() {
+    printf("Running test14_object_find_type_following...\n");
+
+    char repo_path[MAX_PATH];
+    Repository *repo = create_temp_repo(repo_path, sizeof(repo_path));
+
+    // 1. Create a real tree object so that follow = true can read it.
+    Tree *tree = tree_new();
+    tree_add_entry(tree, "100644", "hello.txt",
+                   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    Object *tree_obj = tree_to_object(tree);
+    char *tree_sha = object_write(tree_obj, repo);
+    tree_destroy(tree);
+    object_destroy(tree_obj);
+
+    // 2. Create a commit pointing to that tree.
+    KVLM *commit_kvlm = kvlm_new();
+    kvlm_set(commit_kvlm, "tree", tree_sha);
+    kvlm_set(commit_kvlm, "author", "Test User <test@example.com>");
+    kvlm_set(commit_kvlm, NULL, "Initial commit\n");
+
+    Object *commit_obj = commit_from_kvlm(commit_kvlm);
+    char *commit_sha = object_write(commit_obj, repo);
+    kvlm_destroy(commit_kvlm);
+    object_destroy(commit_obj);
+
+    // Follow commit -> tree lookup
+    char *found_tree = object_find(repo, commit_sha, GIT_TREE, true);
+    assert(found_tree != NULL);
+    assert(strcmp(found_tree, tree_sha) == 0);
+    free(found_tree);
+
+    // Without following (follow = false), commit isn't a tree -> returns NULL
+    char *no_tree = object_find(repo, commit_sha, GIT_TREE, false);
+    assert(no_tree == NULL);
+
+    // 3. Create annotated tag object pointing to commit_sha
+    KVLM *tag_kvlm = kvlm_new();
+    kvlm_set(tag_kvlm, "object", commit_sha);
+    kvlm_set(tag_kvlm, "type", "commit");
+    kvlm_set(tag_kvlm, "tag", "v1.0");
+    kvlm_set(tag_kvlm, NULL, "Tag message\n");
+
+    Object *tag_obj = object_from_kvlm(GIT_TAG, tag_kvlm);
+    char *tag_sha = object_write(tag_obj, repo);
+    kvlm_destroy(tag_kvlm);
+    object_destroy(tag_obj);
+
+    // Follow tag -> commit lookup
+    char *found_commit_from_tag = object_find(repo, tag_sha, GIT_COMMIT, true);
+    assert(found_commit_from_tag != NULL);
+    assert(strcmp(found_commit_from_tag, commit_sha) == 0);
+    free(found_commit_from_tag);
+
+    free(commit_sha);
+    free(tag_sha);
+    free(tree_sha);
+    destroy_temp_repo(repo);
+
+    printf("Test 14 Passed: object_find correctly follows tags and commits to target types\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -301,6 +466,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    9. Test object_to_tree valid input\n");
         fprintf(stderr, "    10. Test tree_to_object invalid inputs\n");
         fprintf(stderr, "    11. Test tree_to_object valid input\n");
+        fprintf(stderr, "    12. Test object find refs and head\n");
+        fprintf(stderr, "    13. Test object find hex prefix\n");
+        fprintf(stderr, "    14. Test object find type following\n");
         return EXIT_FAILURE;
     }
 
@@ -320,6 +488,9 @@ int main(int argc, char *argv[]) {
         case 9:  status = test_09_object_to_tree_valid(); break;
         case 10: status = test_10_tree_to_object_invalid(); break;
         case 11: status = test_11_tree_to_object_valid(); break;
+        case 12: status = test12_object_find_refs_and_head(); break;
+        case 13: status = test13_object_find_hex_prefix(); break;
+        case 14: status = test14_object_find_type_following(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 

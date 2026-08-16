@@ -96,8 +96,9 @@ void dynbuf_destroy(DynBuf *db);
 /* Miscellaneous */
 
 #define chomp(s)            if (strlen(s)) { s[strlen(s) - 1] = 0; }
-#define chomp_quotes(s)     if (strlen(s)) { s[strlen(s) - 1] = 0; s[0] = 0;}
+#define chomp_quotes(s)     if (strlen(s)) { s[strlen(s) - 1] = 0; s[0] = 0; }
 #define min(a, b)           ((a) < (b) ? (a) : (b))
 #define streq(a, b)         (strcmp(a, b) == 0)
+#define strneq(a, b, s)     (strncmp(a, b, s) == 0)
 
 #endif
