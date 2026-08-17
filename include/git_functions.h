@@ -20,5 +20,8 @@ bool cmd_rev_parse(int arg_count, char *args[]);
 bool cmd_ls_files(int arg_count, char *args[]);
 bool cmd_check_ignore(int arg_count, char *args[]);
 bool cmd_status(int arg_count, char *args[]);
+bool cmd_rm(int arg_count, char *args[]);
+bool cmd_add(int arg_count, char *args[]);
+bool cmd_commit(int arg_count, char *args[]);
 
 #endif

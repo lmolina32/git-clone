@@ -8,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /**
  * read_binary32 - reads a 32-bit big-endian integer from a byte buffer
@@ -102,6 +103,7 @@ GitIndex *index_read(Repository *repo){
 
     size_t pos = 12;
     for (uint32_t i = 0; i < count; i++){
+        size_t entry_start = pos;
         if (pos + 62 > file_len){
             fprintf(stderr, "index_read: truncated entry\n");
             break;
@@ -174,7 +176,9 @@ GitIndex *index_read(Repository *repo){
         memcpy(e.name, raw + name_start, name_len);
         e.name[name_len] = '\0';
 
-        pos = (size_t)(8 * ceil((double)pos / 8.0));
+        size_t entry_len = pos - entry_start;
+        size_t padded_len = ((entry_len + 7) / 8) * 8;
+        pos = entry_start + padded_len;
 
         index_add_entry(idx, e);
         continue;
@@ -200,4 +204,101 @@ void index_destroy(GitIndex *index){
     }
     free(index->entries);
     free(index);
+}
+
+/**
+ * write_binary32 - Write a 32‑bit integer in big‑endian order.
+ *
+ * @param f File pointer.
+ * @param v Value to write.
+ */
+static void write_binary32(FILE *f, uint32_t v){
+    unsigned char b[4] = {
+        (unsigned char)(v >> 24),
+        (unsigned char)(v >> 16),
+        (unsigned char)(v >> 8),
+        (unsigned char)(v)
+    };
+    fwrite(b, 1, 4, f);
+}
+
+/**
+ * write_binary16 - Write a 16‑bit integer in big‑endian order.
+ *
+ * @param f File pointer.
+ * @param v Value to write.
+ */
+static void write_binary16(FILE *f, uint16_t v){
+    unsigned char b[2] = {
+        (unsigned char)(v >> 8),
+        (unsigned char)(v)
+    };
+    fwrite(b, 1, 2, f);
+}
+
+/**
+ * index_write - Write the Git index (`.git/index`) back to disk.
+ *
+ * Serialises the GitIndex structure into the version 2 binary format. The
+ * file is overwritten; on success the repository's index is updated.
+ *
+ * @param repo  Repository pointer.
+ * @param index The GitIndex to write.
+ * @return true on success, false on error.
+ */
+bool index_write(Repository *repo, GitIndex *index){
+    char *path = repo_file(repo, false, "index", NULL);
+    if (!path) return false;
+
+    FILE *f = safe_fopen(path, "wb");
+    free(path);
+
+    fwrite("DIRC", 1, 4, f);
+    write_binary32(f, index->version);
+    write_binary32(f, (uint32_t)index->count);
+
+    for (size_t i = 0; i < index->count; i++){
+        IndexEntry *e = &index->entries[i];
+        size_t written = 0;
+
+        write_binary32(f, e->ctime_s);   written += 4;
+        write_binary32(f, e->ctime_ns);  written += 4;
+        write_binary32(f, e->mtime_s);   written += 4;
+        write_binary32(f, e->mtime_ns);  written += 4;
+        write_binary32(f, e->dev);       written += 4;
+        write_binary32(f, e->ino);       written += 4;
+
+        write_binary16(f, 0);            written += 2;
+        uint16_t mode = (uint16_t)((e->mode_type << 12) | e->mode_perms);
+        write_binary16(f, mode);         written += 2;
+
+        write_binary32(f, e->uid);       written += 4; 
+        write_binary32(f, e->gid);       written += 4; 
+        write_binary32(f, e->fsize);     written += 4; 
+
+        unsigned char sha_bin[20];
+        for (int b = 0; b < 20; b++){
+            unsigned int byte;
+            sscanf(e->sha + b * 2, "%2x", &byte);
+            sha_bin[b] = (unsigned char)byte;
+        }
+        fwrite(sha_bin, 1, 20, f);       written += 20;
+
+        size_t name_len = strlen(e->name);
+        uint16_t stored_name_len = (uint16_t)(name_len >= 0xFFF ? 0xFFF : name_len);
+        uint16_t flags = (uint16_t)((e->flag_assume_valid ? 0x8000 : 0) |
+                                     e->flag_stage | stored_name_len);
+        write_binary16(f, flags);        written += 2;
+
+        fwrite(e->name, 1, name_len, f); written += name_len;
+        fputc(0, f);                     written += 1;
+
+        size_t pad = (written % 8 != 0) ? (8 - written % 8) : 0;
+        for (size_t p = 0; p < pad; p++){
+            fputc(0, f);
+        }
+    }
+
+    fclose(f);
+    return true;
 }
