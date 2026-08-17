@@ -12,14 +12,14 @@
 /* Structures */
 
 typedef struct {
-   int repo_format_version;
+   int  repo_format_version;
    bool filemode;
    bool bare;
 } Configuration;
 
 typedef struct {
-    char worktree[MAX_PATH];
-    char gitdir[MAX_PATH];
+    char          worktree[MAX_PATH];
+    char          gitdir[MAX_PATH];
     Configuration *config; 
 } Repository;
 

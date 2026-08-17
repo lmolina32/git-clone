@@ -328,3 +328,57 @@ void dynbuf_destroy(DynBuf *db){
     db->data = NULL;
     db->len = db->cap = 0;
 }
+
+/**
+ * strlist_init - initializes a new StrList (string list) structure
+ *
+ * @param list  Pointer to the uninitialized StrList.
+ **/
+void string_list_init(StrList *list){
+    string_set_init((StringSet *)list);
+}
+
+/**
+ * strlist_add - appends a copy of a string to a StrList
+ *
+ * @param list  Pointer to the initialized StrList.
+ * @param s     The null-terminated string to add.
+ **/
+void string_list_add(StrList *list, const char *s){
+    string_set_add((StringSet *)list, s);
+}
+
+/**
+ * strlist_remove - removes the first occurrence of a string from a StrList
+ *
+ * Searches the list for a matching string, frees it, and swaps the
+ * last element into its place (order is not preserved).
+ *
+ * @param list  Pointer to the initialized StrList.
+ * @param s     The string to remove.
+ *
+ * @return true if the string was found and removed, false otherwise.
+ **/
+bool string_list_remove(StrList *list, const char *s){
+    for (size_t i = 0; i < list->count; i++){
+        if (streq(list->items[i], s)){
+            free(list->items[i]);
+            list->items[i] = list->items[list->count - 1];
+            list->count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * strlist_destroy - frees all memory associated with a StrList
+ *
+ * Releases each string and the items array. The StrList must not be
+ * used afterwards unless reinitialized.
+ *
+ * @param list  Pointer to the StrList to destroy.
+ **/
+void string_list_destroy(StrList *list){
+    string_set_destroy((StringSet *)list);
+}

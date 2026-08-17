@@ -65,17 +65,19 @@ static inline void *safe_strdup(const char *s){
 /* Structures */
 
 typedef struct {
-    char **items;
-    size_t count;
-    size_t capacity; 
+    char    **items;
+    size_t    count;
+    size_t    capacity; 
 } StringSet;
 
 
 typedef struct {
-    char *data;
-    size_t len;
-    size_t cap;
+    char    *data;
+    size_t   len;
+    size_t   cap;
 } DynBuf;
+
+typedef StringSet StrList;
 
 /* Functions */
 
@@ -92,6 +94,10 @@ void string_set_destroy(StringSet *set);
 void dynbuf_init(DynBuf *db);
 void dynbuf_append(DynBuf *db, const void *ptr, size_t n);
 void dynbuf_destroy(DynBuf *db);
+void string_list_init(StrList *list);
+void string_list_add(StrList *list, const char *s);
+bool string_list_remove(StrList *list, const char *s);
+void string_list_destroy(StrList *list);
 
 /* Miscellaneous */
 

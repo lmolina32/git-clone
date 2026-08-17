@@ -8,12 +8,12 @@
 typedef struct RefNode RefNode;
 
 struct RefNode{
-    char *name;
-    bool is_leaf;
-    char *sha;
+    char    *name;
+    bool     is_leaf;
+    char    *sha;
     RefNode *children;
-    size_t child_count;
-    size_t child_capacity;
+    size_t   child_count;
+    size_t   child_capacity;
 };
 
 char    *ref_resolve(Repository *repo, const char *ref);

@@ -10,15 +10,15 @@
 /* Structures */
 
 typedef struct {
-    char mode[7];
+    char  mode[7];
     char *path;
-    char sha[41];
+    char  sha[41];
 } TreeLeaf;
 
 typedef struct {
     TreeLeaf *entries;
-    size_t count;
-    size_t capacity;
+    size_t    count;
+    size_t    capacity;
 } Tree;
 
 /* Functions */

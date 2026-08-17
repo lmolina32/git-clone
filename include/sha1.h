@@ -9,10 +9,10 @@
 /* Structures */
 
 typedef struct {
-    uint32_t state[5];
-    uint64_t count;        
-    unsigned char buffer[64];
-    size_t buffer_len;
+    uint32_t        state[5];
+    uint64_t        count;        
+    unsigned char   buffer[64];
+    size_t          buffer_len;
 } SHA1_CTX;
 
 /* Functions */
