@@ -234,6 +234,75 @@ int test_06_index_destroy_with_entries() {
     return EXIT_SUCCESS;
 }
 
+int test_07_index_write_roundtrip(void) {
+    printf("Running index_write roundtrip test...\n");
+    char template[] = "/tmp/git_clone_test_XXXXXX";
+    char *repo_path = mkdtemp(template);
+    assert(repo_path != NULL);
+    Repository *repo = repo_init(repo_path);
+    assert(repo != NULL);
+
+    GitIndex *idx = safe_calloc(1, sizeof(GitIndex));
+    idx->version = 2;
+    idx->entries = safe_calloc(2, sizeof(IndexEntry));
+    idx->count = 2;
+    idx->capacity = 2;
+
+    /* Entry 0 */
+    IndexEntry *e = &idx->entries[0];
+    e->name = safe_strdup("file1.txt");
+    e->ctime_s = 1234567890; e->ctime_ns = 123;
+    e->mtime_s = 1234567891; e->mtime_ns = 456;
+    e->dev = 65; e->ino = 1234;
+    e->mode_type = 0b1000; e->mode_perms = 0644;
+    e->uid = 1000; e->gid = 1000; e->fsize = 12345;
+    strcpy(e->sha, "1111111111111111111111111111111111111111");
+    e->flag_assume_valid = false; e->flag_stage = 0;
+
+    /* Entry 1 */
+    e = &idx->entries[1];
+    e->name = safe_strdup("long/path/to/file2.txt");
+    e->ctime_s = 1234567892; e->ctime_ns = 789;
+    e->mtime_s = 1234567893; e->mtime_ns = 101;
+    e->dev = 65; e->ino = 5678;
+    e->mode_type = 0b1000; e->mode_perms = 0755;
+    e->uid = 1000; e->gid = 1000; e->fsize = 67890;
+    strcpy(e->sha, "2222222222222222222222222222222222222222");
+    e->flag_assume_valid = false; e->flag_stage = 0;
+
+    bool ok = index_write(repo, idx);
+    assert(ok);
+
+    GitIndex *read_idx = index_read(repo);
+    assert(read_idx != NULL);
+    assert(read_idx->count == idx->count);
+    assert(read_idx->version == idx->version);
+
+    for (size_t i = 0; i < idx->count; i++) {
+        assert(streq(read_idx->entries[i].name, idx->entries[i].name));
+        assert(read_idx->entries[i].ctime_s == idx->entries[i].ctime_s);
+        assert(read_idx->entries[i].ctime_ns == idx->entries[i].ctime_ns);
+        assert(read_idx->entries[i].mtime_s == idx->entries[i].mtime_s);
+        assert(read_idx->entries[i].mtime_ns == idx->entries[i].mtime_ns);
+        assert(read_idx->entries[i].dev == idx->entries[i].dev);
+        assert(read_idx->entries[i].ino == idx->entries[i].ino);
+        assert(read_idx->entries[i].mode_type == idx->entries[i].mode_type);
+        assert(read_idx->entries[i].mode_perms == idx->entries[i].mode_perms);
+        assert(read_idx->entries[i].uid == idx->entries[i].uid);
+        assert(read_idx->entries[i].gid == idx->entries[i].gid);
+        assert(read_idx->entries[i].fsize == idx->entries[i].fsize);
+        assert(streq(read_idx->entries[i].sha, idx->entries[i].sha));
+    }
+
+    index_destroy(idx);
+    index_destroy(read_idx);
+    repo_destroy(repo);
+    remove_directory(repo_path);
+    /* repo_path is stack */
+    printf("Test 0 Passed: index_write roundtrip preserves all fields\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -245,6 +314,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    4. Test invalid version handling\n");
         fprintf(stderr, "    5. Test index_destroy with NULL\n");
         fprintf(stderr, "    6. Test index_destroy with entries\n");
+        fprintf(stderr, "    7. Test index_write roundtrip\n");
         return EXIT_FAILURE;
     }
 
@@ -259,6 +329,7 @@ int main(int argc, char *argv[]) {
         case 4:  status = test_04_index_read_invalid_version(); break;
         case 5:  status = test_05_index_destroy_null(); break;
         case 6:  status = test_06_index_destroy_with_entries(); break;
+        case 7:  status = test_07_index_write_roundtrip(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 
