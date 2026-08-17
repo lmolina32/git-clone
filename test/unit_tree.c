@@ -2,11 +2,48 @@
 
 #include "tree.h"
 #include "utils.h"
+#include "index.h"
+#include "objects.h"
+#include "repository.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+#include <sys/stat.h>
+
+/* Helpers */
+
+static GitIndex *build_test_index(void) {
+    GitIndex *idx = safe_calloc(1, sizeof(GitIndex));
+    idx->version = 2;
+    idx->entries = safe_calloc(3, sizeof(IndexEntry));
+    idx->count = 3;
+    idx->capacity = 3;
+
+    IndexEntry *e = &idx->entries[0];
+    e->name = safe_strdup("README");
+    e->mode_type = 0b1000;
+    e->mode_perms = 0644;
+    strcpy(e->sha, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    e = &idx->entries[1];
+    e->name = safe_strdup("src/main.c");
+    e->mode_type = 0b1000;
+    e->mode_perms = 0644;
+    strcpy(e->sha, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+    e = &idx->entries[2];
+    e->name = safe_strdup("src/utils.h");
+    e->mode_type = 0b1000;
+    e->mode_perms = 0644;
+    strcpy(e->sha, "cccccccccccccccccccccccccccccccccccccccc");
+
+    return idx;
+}
+
+/* Tests */
 
 int test_00_tree_new_empty() {
     printf("Running tree_new empty test...\n");
@@ -144,6 +181,61 @@ int test_07_tree_parse_empty_buffer() {
     return EXIT_SUCCESS;
 }
 
+int test_08_tree_from_index_basic(void) {
+    printf("Running tree_from_index basic test...\n");
+    char template[] = "/tmp/git_clone_test_XXXXXX";
+    char *repo_path = mkdtemp(template);
+    assert(repo_path != NULL);
+    Repository *repo = repo_init(repo_path);
+    assert(repo != NULL);
+
+    GitIndex *idx = build_test_index();
+    char *root_sha = tree_from_index(repo, idx);
+    assert(root_sha != NULL);
+    assert(strlen(root_sha) == 40);
+
+    /* Verify the tree object file exists */
+    char dir[3] = { root_sha[0], root_sha[1], '\0'};
+    char *obj_path = repo_file(repo, true, "objects", dir, root_sha + 2, NULL);
+    assert(file_exists(obj_path));
+    free(obj_path);
+
+    free(root_sha);
+    index_destroy(idx);
+    repo_destroy(repo);
+    remove_directory(repo_path);
+    /* repo_path is stack */
+    printf("Test 0 Passed: tree_from_index produces a valid tree SHA\n");
+    return EXIT_SUCCESS;
+}
+
+int test_09_tree_from_index_empty_index(void) {
+    printf("Running tree_from_index empty index test...\n");
+    char template[] = "/tmp/git_clone_test_XXXXXX";
+    char *repo_path = mkdtemp(template);
+    assert(repo_path != NULL);
+    Repository *repo = repo_init(repo_path);
+    assert(repo != NULL);
+
+    GitIndex *idx = safe_calloc(1, sizeof(GitIndex));
+    idx->version = 2;
+    idx->entries = NULL;
+    idx->count = 0;
+    idx->capacity = 0;
+
+    char *root_sha = tree_from_index(repo, idx);
+    assert(root_sha != NULL);
+    assert(strlen(root_sha) == 40);
+
+    free(root_sha);
+    index_destroy(idx);
+    repo_destroy(repo);
+    remove_directory(repo_path);
+    /* repo_path is stack */
+    printf("Test 1 Passed: tree_from_index works with an empty index\n");
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s NUMBER\n\n", argv[0]);
@@ -156,6 +248,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "    5. Test tree_parse/tree_serialize round trip\n");
         fprintf(stderr, "    6. Test tree_parse rejects malformed data\n");
         fprintf(stderr, "    7. Test tree_parse on an empty buffer\n");
+        fprintf(stderr, "    8. Test tree_from_index on basic input\n");
+        fprintf(stderr, "    9. Test tree_from_basic on empty index\n");
         return EXIT_FAILURE;
     }
 
@@ -171,6 +265,8 @@ int main(int argc, char *argv[]) {
         case 5: status = test_05_tree_parse_serialize_roundtrip(); break;
         case 6: status = test_06_tree_parse_rejects_malformed_data(); break;
         case 7: status = test_07_tree_parse_empty_buffer(); break;
+        case 8: status = test_08_tree_from_index_basic(); break;
+        case 9: status = test_09_tree_from_index_empty_index(); break;
         default: fprintf(stderr, "Unknown NUMBER: %d\n", number); break;
     }
 

@@ -39,5 +39,6 @@ typedef struct {
 
 GitIndex  *index_read(Repository *repo);
 void       index_destroy(GitIndex *index);
+bool       index_write(Repository *repo, GitIndex *index);
 
 #endif

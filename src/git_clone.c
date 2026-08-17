@@ -45,6 +45,12 @@ int main(int argc, char *argv[]){
         status = cmd_check_ignore(argc - argind, &argv[argind]);
     } else if (streq(command, "status")){
         status = cmd_status(argc - argind, &argv[argind]);
+    } else if (streq(command, "rm")){
+        status = cmd_rm(argc - argind, &argv[argind]);
+    } else if (streq(command, "add")){
+        status = cmd_add(argc - argind, &argv[argind]);
+    } else if (streq(command, "commit")){
+        status = cmd_commit(argc - argind, &argv[argind]);
     } else {
         fprintf(stderr, "%s: '%s' is not a valid command.\n\n", argv[0], command);
         usage(argv[0]);

@@ -8,6 +8,9 @@
 #include "index.h"
 #include "gitignore.h"
 #include "status.h"
+#include "stage.h"
+#include "config.h"
+#include "commit.h"
 #include "utils.h"
 
 #include <stdio.h>
@@ -49,6 +52,9 @@ void usage(const char *program) {
     fprintf(stderr, "   ls-files [--verbose]                List files in the staging area.\n");
     fprintf(stderr, "   check-ignore PATH ...               Check paths against ignore rules.\n");
     fprintf(stderr, "   status                              Show the workign tree status.\n");
+    fprintf(stderr, "   add PATH ...                        Add files contents to the index\n");
+    fprintf(stderr, "   rm PATH ...                         Remove files from the working tree and index.\n");
+    fprintf(stderr, "   commit -m MESSAGE                   Record staged changes as a new commit\n");
 
     fprintf(stderr, "\nGeneral Options:\n");
     fprintf(stderr, "   -h or --help                        Print this help message.\n");
@@ -561,7 +567,6 @@ bool cmd_ls_files(int arg_count, char *args[]){
  *
  * @return true on success, false on usage error or repository failure.
  **/
-
 bool cmd_check_ignore(int arg_count, char *args[]){
     if (arg_count < 1){
         fprintf(stderr, "usage: git check-ignore <path> ...\n");
@@ -609,4 +614,126 @@ bool cmd_status(int arg_count, char *args[]){
     index_destroy(idx);
     repo_destroy(repo);
     return true;
+}
+
+/**
+ * cmd_rm - Removes files from both the index and the working tree.
+ *
+ * For each given path, the corresponding index entry is deleted and,
+ * unless the file is outside the worktree, the physical file is also
+ * unlinked. This operation is destructive and cannot be undone.
+ *
+ * @param arg_count  Number of path arguments.
+ * @param args       Array of path strings.
+ *
+ * @return true on success, false on usage error or repository failure.
+ **/
+bool cmd_rm(int arg_count, char *args[]){
+    if (arg_count < 1){
+        fprintf(stderr, "usage: ./git_clone rm <path> ...\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    bool ok = stage_remove(repo, (const char **)args, (size_t)arg_count, true, false);
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_add - Adds file contents to the index (stages them).
+ *
+ * For each given path, the file is hashed into a blob object and a new
+ * index entry is created, replacing any existing entry for the same path.
+ * The file must exist and be inside the worktree.
+ *
+ * @param arg_count  Number of path arguments.
+ * @param args       Array of path strings.
+ *
+ * @return true on success, false on usage error or repository failure.
+ **/
+bool cmd_add(int arg_count, char *args[]){
+    if (arg_count < 1){
+        fprintf(stderr, "usage: ./git_clone add <path> ...\n");
+        return false;
+    }    
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    bool ok = stage_add(repo, (const char **)args, (size_t)arg_count);
+    repo_destroy(repo);
+    return ok;
+}
+
+/**
+ * cmd_commit - Creates a new commit from the current index.
+ *
+ * Builds a tree from the index, creates a commit object with the given
+ * message, and updates the current branch (or HEAD) to point to the new
+ * commit. The author is taken from the user's git configuration.
+ *
+ * @param arg_count  Number of arguments (must include -m <message>).
+ * @param args       Argument vector.
+ *
+ * @return true on success, false on usage error or repository failure.
+ **/
+bool cmd_commit(int arg_count, char *args[]){
+    const char *message = NULL;
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "-m") && i + 1 < arg_count){
+            message = args[++i];
+        }
+    }
+
+    if (!message){
+        fprintf(stderr, "usage: ./git_clone commit -m <message>\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    GitIndex *idx = index_read(repo);
+    char *tree_sha = tree_from_index(repo, idx);
+    index_destroy(idx);
+
+    if (!tree_sha){
+        fprintf(stderr, "commit: failed to build tree from index\n");
+        repo_destroy(repo);
+        return false;
+    }
+
+    char *parent_sha = object_find(repo, "HEAD", GIT_ANY_TYPE, true);
+    char *author = gitconfig_user_get();
+    if (!author){ author = safe_strdup("uknown <unknown@example.com"); }
+
+    char *commit_sha = commit_create(repo, tree_sha, parent_sha, author, time(NULL), message);
+
+    free(tree_sha);
+    free(parent_sha);
+    free(author);
+    
+    char *branch = branch_get_active(repo);
+    bool ok;
+    if (branch){
+        char *ref_name = path_join("heads", branch, NULL);
+        ok = ref_create(repo, ref_name, commit_sha);
+        free(ref_name);
+        free(branch);
+    } else {
+        char *head_path = repo_file(repo, false, "HEAD", NULL);
+        FILE *f = safe_fopen(head_path, "w");
+        fprintf(f, "%s\n", commit_sha);
+        fclose(f);
+        free(head_path);
+        ok = true;
+    }
+
+    printf("%s\n", commit_sha);
+    free(commit_sha);
+    repo_destroy(repo);
+    return ok;
 }

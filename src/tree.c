@@ -68,7 +68,7 @@ void tree_add_entry(Tree *t, const char *mode, const char *path, const char *sha
     }
 
     e->path = safe_strdup(path ? path: "");
-    memcpy(e->sha, sha, 40);
+    strncpy(e->sha, sha, 40);
     e->sha[40] = '\0';
 }
 
@@ -343,4 +343,182 @@ bool tree_checkout(Repository *repo, Tree *tree, const char *path){
         if (!ok) return false;
     }
     return true;
+}
+
+/**
+ * dirmap_get_or_create - Retrieve or create a bucket for a directory.
+ *
+ * Searches the map for a bucket matching the given directory path.
+ * If none exists, a new bucket is created and initialised.
+ *
+ * @param m   Pointer to the DirMap.
+ * @param dir Directory path ("" for root).
+ *
+ * @return Pointer to the (possibly new) DirBucket.
+ **/
+static DirBucket *dirmap_get_or_create(DirMap *m, const char *dir){
+    for (size_t i = 0; i < m->count; i++){
+        if (streq(m->buckets[i].dir, dir)) return &m->buckets[i];
+    }
+
+    if (m->capacity == m->count){
+        m->capacity = m->capacity ? m->capacity * 2 : 16;
+        m->buckets = safe_realloc(m->buckets, sizeof(DirBucket) * m->capacity);
+    }
+    DirBucket *b = &m->buckets[m->count++];
+    b->dir       = safe_strdup(dir);
+    b->items     = 0;
+    b->count     = 0;
+    b->capacity  = 0;
+    return b;
+}
+
+/**
+ * dirbucket_add - Append a DirItem to a bucket.
+ *
+ * Grows the bucket's item array if necessary and copies the item.
+ *
+ * @param b    Pointer to the DirBucket.
+ * @param item The DirItem to add (copied by value).
+ **/
+static void dirbucket_add(DirBucket *b, DirItem item){
+    if (b->count == b->capacity){
+        b->capacity = b->capacity ? b->capacity * 2 : 16;
+        b->items = safe_realloc(b->items, sizeof(DirItem) * b->capacity);
+    }
+    b->items[b->count++] = item;
+}
+
+/**
+ * bucket_cmp_len_desc - Comparison function for sorting buckets by depth.
+ *
+ * Orders buckets from deepest (longest directory string) to root (shortest).
+ *
+ * @param a Pointer to first DirBucket.
+ * @param b Pointer to second DirBucket.
+ *
+ * @return Negative if a is shallower, positive if deeper, zero if equal.
+ **/
+static int bucket_cmp_len_desc(const void *a, const void *b){
+    size_t la = strlen(((const DirBucket *)a)->dir);
+    size_t lb = strlen(((const DirBucket *)b)->dir);
+    return (int)lb - (int)la;
+}
+
+/**
+ * dirname_of - Extract the parent directory from a path.
+ *
+ * Returns a newly allocated string containing everything before the
+ * last slash, or an empty string if there is no slash. The caller
+ * must free the result.
+ *
+ * @param path Input path.
+ *
+ * @return Newly allocated parent directory string (or "" if none).
+ **/
+static char *dirname_of(const char *path){
+    const char *slash = strrchr(path, '/');
+    if (!slash) return safe_strdup("");
+    size_t len = (size_t)(slash - path);
+    char *out = safe_calloc(len + 1, 1);
+    memcpy(out, path, len);
+    out[len] = '\0';
+    return out;
+}
+
+/**
+ * basename_of - Return a pointer to the final component of a path.
+ *
+ * @param path Input path.
+ *
+ * @return Pointer to the basename (within the original string).
+ **/
+static const char *basename_of(const char *path){
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+/**
+ * tree_from_index - Convert a flat index into a recursive tree object.
+ *
+ * Builds a directory map from the index, then writes a tree object for every
+ * directory (bottom‑up). Returns the SHA‑1 of the root tree.
+ *
+ * @param repo Repository pointer.
+ * @param idx  The GitIndex to convert.
+ * @return Newly allocated SHA‑1 hex string of the root tree, or NULL on failure.
+ */
+char *tree_from_index(Repository *repo, GitIndex *idx){
+    DirMap map = {0};
+    dirmap_get_or_create(&map, "");
+
+    for (size_t i = 0; i < idx->count; i++){
+        char *dir = dirname_of(idx->entries[i].name);
+
+        char *key = safe_strdup(dir);
+        while (!streq(key, "")){
+            dirmap_get_or_create(&map, key);
+            char *parent = dirname_of(key);
+            free(key);
+            key = parent;
+        }
+        free(key);
+
+        DirBucket *b = dirmap_get_or_create(&map, dir);
+        DirItem item = {0};
+        item.is_tree_ref = false;
+        strncpy(item.name, basename_of(idx->entries[i].name), sizeof(item.name) -1);
+        snprintf(item.mode, sizeof(item.mode), "%02o%04o",
+                idx->entries[i].mode_type, idx->entries[i].mode_perms);
+        memcpy(item.sha, idx->entries[i].sha, 41);
+        dirbucket_add(b, item);
+
+        free(dir);
+    }
+
+    qsort(map.buckets, map.count, sizeof(DirBucket), bucket_cmp_len_desc);
+
+    char *root_sha = NULL;
+    for (size_t i = 0; i < map.count; i++){
+        DirBucket *b = &map.buckets[i];
+
+        char *this_dir = safe_strdup(b->dir);
+        Tree *tree = tree_new();
+        for (size_t j = 0; j < b->count; j++){
+            DirItem *it = &b->items[j];
+            const char *mode = it->is_tree_ref ? "040000" : it->mode;
+            tree_add_entry(tree, mode, it->name, it->sha);
+        }
+
+        Object *tree_obj = tree_to_object(tree);
+        char *sha = object_write(tree_obj, repo);
+        tree_destroy(tree);
+        object_destroy(tree_obj);
+
+        char *parent_dir = dirname_of(this_dir);
+        bool is_root = streq(this_dir, "");
+        free(this_dir);
+        
+        if (is_root){
+            root_sha = safe_strdup(sha);
+        } else {
+            DirBucket *parent = dirmap_get_or_create(&map, parent_dir);
+            DirItem tree_item = {0};
+            tree_item.is_tree_ref = true;
+            strncpy(tree_item.name, basename_of(b->dir), sizeof(tree_item.name) -1);
+            memcpy(tree_item.sha, sha, 41);
+            dirbucket_add(parent, tree_item);
+        }
+        free(parent_dir);
+        free(sha);
+    }
+
+    for (size_t i = 0; i < map.count; i++){
+        free(map.buckets[i].dir);
+        free(map.buckets[i].items);
+    }
+
+    free(map.buckets);
+
+    return root_sha;
 }
