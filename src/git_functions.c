@@ -5,6 +5,9 @@
 #include "objects.h"
 #include "kvlm.h"
 #include "ref.h"
+#include "index.h"
+#include "gitignore.h"
+#include "status.h"
 #include "utils.h"
 
 #include <stdio.h>
@@ -13,6 +16,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <pwd.h>
+#include <grp.h>
 
 /**
  * usage - prints the options for the program
@@ -38,6 +44,11 @@ void usage(const char *program) {
     fprintf(stderr, "   show-ref                            List all references\n");
     fprintf(stderr, "   tag [-a] [name] [object]            List tags, or create a new one.\n");
     fprintf(stderr, "   rev-parse [--git-type TYPE] NAME    Resolve a name to an object hash\n");
+
+    fprintf(stderr, "\nStaging area:\n");
+    fprintf(stderr, "   ls-files [--verbose]                List files in the staging area.\n");
+    fprintf(stderr, "   check-ignore PATH ...               Check paths against ignore rules.\n");
+    fprintf(stderr, "   status                              Show the workign tree status.\n");
 
     fprintf(stderr, "\nGeneral Options:\n");
     fprintf(stderr, "   -h or --help                        Print this help message.\n");
@@ -470,5 +481,132 @@ bool cmd_rev_parse(int arg_count, char *args[]){
 
     printf("%s", sha ? sha : "None");
     free(sha);
+    return true;
+}
+
+/**
+ * cmd_ls_files - lists tracked files in the staging area (index)
+ *
+ * Reads the repository's index file and prints each entry's path.
+ * When the --verbose flag is supplied, it also outputs detailed
+ * metadata for every file: type, permissions, blob SHA, timestamps,
+ * device/inode, owner/group, and flags.
+ *
+ * @param arg_count  Number of command-line arguments.
+ * @param args       Array of argument strings.
+ *
+ * @return true on success, false if the repository cannot be located.
+ **/
+bool cmd_ls_files(int arg_count, char *args[]){
+    bool verbose = false;
+    for (int i = 0; i < arg_count; i++){
+        if (streq(args[i], "--verbose")){ verbose = true; }
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    GitIndex *idx = index_read(repo);
+    if (verbose){
+        printf("Index file format v%u, containing %zu entries\n", idx->version, idx->count);
+    }
+
+    for (size_t i = 0; i < idx->count; i++){
+        IndexEntry *e = &idx->entries[i];
+        printf("%s\n", e->name);
+        if (!verbose) continue;
+
+        const char *type_name = 
+            e->mode_type == 0b1000 ? "regular file" : 
+            e->mode_type == 0b1010 ? "symlink"      : 
+            e->mode_type == 0b1110 ? "git link"     :
+                                     "unkown";
+        printf("  %s with perms: %o\n", type_name, e->mode_perms);
+        printf("  on blob: %s\n", e->sha);
+
+        char cbuf[32]; 
+        char mbuf[32];
+        time_t ct = (time_t)e->ctime_s;
+        time_t mt = (time_t)e->mtime_s;
+        strftime(cbuf,  sizeof(cbuf), "%Y-%m-%d %H:%M:%S", localtime(&ct));
+        strftime(mbuf,  sizeof(mbuf), "%Y-%m-%d %H:%M:%S", localtime(&mt));
+        printf("  created: %s.%u, modified: %s.%u\n", cbuf, e->ctime_ns, mbuf, e->mtime_ns);
+        printf("  device: %u, inode: %u\n", e->dev, e->ino);
+
+        struct passwd *pw = getpwuid(e->uid);
+        struct group  *gr = getgrgid(e->gid);
+        if (pw && gr){
+            printf("  user: %s (%u)  group: %s (%u)\n", pw->pw_name, e->uid, gr->gr_name, e->gid);
+        } else {
+            printf("  user: %u  group: %u\n", e->uid, e->gid);
+        }
+
+        printf("  flags: stage=%u assume_valid=%s\n", e->flag_stage, e->flag_assume_valid ? "true" : "false");
+
+    }
+    index_destroy(idx);
+    repo_destroy(repo);
+    return true;
+}
+
+/**
+ * cmd_check_ignore - prints which of the given paths are ignored
+ *
+ * Reads all gitignore rules for the repository and checks each
+ * provided path. Paths that match an ignore rule are printed to
+ * stdout, one per line.
+ *
+ * @param arg_count  Number of path arguments.
+ * @param args       Array of path strings.
+ *
+ * @return true on success, false on usage error or repository failure.
+ **/
+
+bool cmd_check_ignore(int arg_count, char *args[]){
+    if (arg_count < 1){
+        fprintf(stderr, "usage: git check-ignore <path> ...\n");
+        return false;
+    }
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+    
+    GitIgnore *rules = gitignore_read(repo);
+    for (int i = 0; i < arg_count; i++){
+        if (check_ignore(rules, args[i])){
+            printf("%s\n", args[i]);
+        }
+    }
+    
+    gitignore_destroy(rules);
+    repo_destroy(repo);
+    return true;
+}
+
+/**
+ * cmd_status - displays the working tree status
+ *
+ * Shows the current branch, staged changes (HEAD vs index), and
+ * unstaged changes (index vs worktree), including untracked files.
+ *
+ * @param arg_count  Unused; kept for command dispatch signature.
+ * @param args       Unused; kept for command dispatch signature.
+ *
+ * @return true on success, false if the repository cannot be located.
+ **/
+bool cmd_status(int arg_count, char *args[]){
+    (void)arg_count; (void)args;
+
+    Repository *repo = repo_find(".", true);
+    if (!repo) return false;
+
+    GitIndex *idx = index_read(repo);
+    status_branch(repo);
+    status_head_index(repo, idx);
+    printf("\n");
+    status_index_worktree(repo, idx);
+   
+    index_destroy(idx);
+    repo_destroy(repo);
     return true;
 }

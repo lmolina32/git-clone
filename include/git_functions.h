@@ -17,5 +17,8 @@ bool cmd_checkout(int arg_count, char *args[]);
 bool cmd_show_ref(int arg_count, char *args[]);
 bool cmd_tag(int arg_count, char *args[]);
 bool cmd_rev_parse(int arg_count, char *args[]);
+bool cmd_ls_files(int arg_count, char *args[]);
+bool cmd_check_ignore(int arg_count, char *args[]);
+bool cmd_status(int arg_count, char *args[]);
 
 #endif

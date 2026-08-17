@@ -39,6 +39,12 @@ int main(int argc, char *argv[]){
         status = cmd_tag(argc - argind, &argv[argind]);
     } else if (streq(command, "rev-parse")){
         status = cmd_rev_parse(argc - argind, &argv[argind]);
+    } else if (streq(command, "ls-files")){
+        status = cmd_ls_files(argc - argind, &argv[argind]);
+    } else if (streq(command, "check-ignore")){
+        status = cmd_check_ignore(argc - argind, &argv[argind]);
+    } else if (streq(command, "status")){
+        status = cmd_status(argc - argind, &argv[argind]);
     } else {
         fprintf(stderr, "%s: '%s' is not a valid command.\n\n", argv[0], command);
         usage(argv[0]);
