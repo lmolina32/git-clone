@@ -68,7 +68,7 @@ bool stage_remove(Repository *repo, const char *paths[], size_t path_count, bool
         }
 
         /* Add a heap-allocated copy, never a stack pointer */
-        string_list_add(&relpaths, safe_strdup(rel));
+        string_list_add(&relpaths, rel);
     }
 
     /* Remove matching index entries */
