@@ -386,7 +386,7 @@ bool cmd_show_ref(int arg_count, char *args[]){
         RefNode *refs = ref_list(repo, NULL);
         repo_destroy(repo);
         if (refs){
-            show_ref(refs, true, "");
+            show_ref(refs, true, "refs");
             ref_node_destroy(refs);
             return true;
         }
@@ -706,7 +706,7 @@ bool cmd_commit(int arg_count, char *args[]){
         return false;
     }
 
-    char *parent_sha = object_find(repo, "HEAD", GIT_ANY_TYPE, true);
+    char *parent_sha = ref_resolve(repo, "HEAD");
     char *author = gitconfig_user_get();
     if (!author){ author = safe_strdup("uknown <unknown@example.com"); }
 
@@ -719,7 +719,7 @@ bool cmd_commit(int arg_count, char *args[]){
     char *branch = branch_get_active(repo);
     bool ok;
     if (branch){
-        char *ref_name = path_join("heads", branch, NULL);
+        char *ref_name = path_join("refs/heads", branch, NULL);
         ok = ref_create(repo, ref_name, commit_sha);
         free(ref_name);
         free(branch);
