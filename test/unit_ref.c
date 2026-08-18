@@ -201,7 +201,7 @@ int test_05_tag_create() {
     assert(ref_create(repo, "refs/heads/master", commit_sha) == true);
     assert(tag_create(repo, "v1.0", "refs/heads/master", false) == true);
 
-    char *tag_sha = ref_resolve(repo, "tags/v1.0");
+    char *tag_sha = ref_resolve(repo, "refs/tags/v1.0");
     assert(tag_sha != NULL);
     assert(strcmp(tag_sha, commit_sha) == 0);
     free(tag_sha);

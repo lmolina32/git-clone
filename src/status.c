@@ -6,6 +6,7 @@
 #include "gitignore.h"
 #include "utils.h"
 #include "compat.h"
+#include "ref.h"
 
 #include <string.h>
 #include <dirent.h>
@@ -106,7 +107,13 @@ void pathmap_destroy(PathMap *m){
  * @return true if the tree was successfully traversed, false on error.
  **/
 bool tree_to_dict(Repository *repo, const char *ref, const char *prefix, PathMap *out){
-    char *tree_sha = object_find(repo, ref, GIT_TREE, true);
+    char *tree_sha = NULL;
+    if (streq(ref, "HEAD")) {
+        tree_sha = ref_resolve(repo, "HEAD");
+        if (!tree_sha) return false; 
+    } else {
+        tree_sha = object_find(repo, ref, GIT_TREE, true);
+    }
     if (!tree_sha) return false;
 
     Object *obj = object_read(repo, tree_sha);
@@ -217,12 +224,14 @@ void status_head_index(Repository *repo, GitIndex *idx){
         IndexEntry *e = &idx->entries[i];
         PathEntry *he = pathmap_find(&head, e->name);
         if (he){
-            if (!streq(he->sha, e->sha)){
-                printf("  modified: %s\n", e->name);
+            if (streq(he->sha, e->sha)){
                 pathmap_remove(&head, e->name);
             } else {
-                printf("  added:    %s\n", e->name);
+                printf("  modified: %s\n", e->name);
+                pathmap_remove(&head, e->name);
             }
+        } else {
+            printf("  added:    %s\n", e->name);
         }
     }
 
